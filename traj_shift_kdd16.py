@@ -117,11 +117,9 @@ if __name__ == "__main__":
 	# input: point and angle:
 	in_pt = [3, 5]
 	angle = 30
-	# prepare some input neighbors
-	neighbors = list()
-	px = [3, 6, 6, 4, 5, 2, 7, 7]
-	py = [2, 2, 7, 1, 2, 4, 3, 2]
-	for pt in zip(px, py):
-		neighbors.append(pt)
 
+	# prepare some input neighbors
+	neighbors = [(x, y) for x,y in zip(np.random.randint(10, size=100), np.random.randint(10, size=100))]
+
+	# call find sample method
 	sample_pt = find_sample(in_pt=in_pt, angle=angle, neighbors=neighbors)
