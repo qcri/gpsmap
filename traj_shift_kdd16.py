@@ -83,8 +83,8 @@ def line_of_gps_point(pt, angle):
 	return line(intercept=a, slope=b)
 
 def distance_heading_speed(pt1, pt2, sigma_h=0.5, sigma_s=0.5):
-	delta_s = exp(-(pt1['speed'] - pt2['speed']) ** 2 / sigma_s)
-	delta_h = exp(-(pt1['angle'] - pt2['angle']) ** 2 / sigma_h)
+	delta_s = exp(-(pt1.speed - pt2.speed) ** 2 / sigma_s)
+	delta_h = exp(-(pt1.angle - pt2.angle) ** 2 / sigma_h)
 	return delta_s * delta_h
 
 
@@ -114,7 +114,11 @@ def haversine(pt1, pt2):
 	km = 6367 * c
 	return km * 1000
 
-def find_sample(in_pt, angle, neighbors):
+
+def find_sample(rand_pt=None, neighbors=None):
+	in_pt = rand_pt.get_coordinates()
+	angle = rand_pt.angle
+
 	# equation of the heading line of the point:
 	eq_heading = line_of_gps_point(in_pt, angle)
 	# equation of the perpendicular line to the point's heading line:
@@ -145,15 +149,29 @@ def find_sample(in_pt, angle, neighbors):
 		axis_label = 'y-axis'
 
 	# figure out number of bins: this is based on the width of road lanes!
-	# 1 find the max pairwise distance
+	LANE_WIDTH = 3.3 # lane width in meters
 	segment_length = max([haversine(neighbors[i].get_coordinates(), neighbors[j].get_coordinates())\
 	                      for i in range(len(neighbors)) for j in range(i+1, len(neighbors))])
-	nb_bins = int(ceil(segment_length/3.3))
+	nb_bins = int(ceil(segment_length/LANE_WIDTH))
 	print 'nb_bins: ', nb_bins
 	histog = np.histogram(axis, bins=nb_bins, density=True)
-	densities, bins = histog[0], histog[1]
-	max_density_bin = np.argmax(densities)
-	marker = (bins[max_density_bin] + bins[max_density_bin + 1]) / 2
+	densities, bin_limits = histog[0], histog[1]
+
+	# Find the relevant/central bin:
+	common_denominator = sum([distance_heading_speed(rand_pt, nei) for nei in neighbors])
+	bin_votes = []
+	for i, (bmin, bmax) in enumerate(zip(bin_limits[:-1], bin_limits[1:])):
+		# find neighbors that are inside the bin limits
+		votes = 0
+		for nei in neighbors:
+			if (axis_label == 'x-axis' and nei.lon >= bmin and nei.lon < bmax) or \
+					(axis_label == 'y-axis' and nei.lat >= bmin and nei.lat < bmax):
+				votes += distance_heading_speed(rand_pt, nei)
+		bin_votes.append(votes/common_denominator)
+	max_density_bin = np.argmax(bin_votes)
+	print 'max bin: %s, bins votes: %s' % (max_density_bin, bin_votes)
+	#max_density_bin = np.argmax(densities)
+	marker = (bin_limits[max_density_bin] + bin_limits[max_density_bin + 1]) / 2
 	# find the other component of the sample point: parallel to x-axis or y-axis
 	if axis_label == 'x-axis':
 		Sx = marker
@@ -240,4 +258,4 @@ if __name__ == "__main__":
 	neighbors = data_points[neighbor_indexes]
 
 	# call find sample method
-	sample_pt = find_sample(in_pt=pt_coordinates, angle=angle, neighbors=neighbors)
+	sample_pt = find_sample(rand_pt=rand_pt, neighbors=neighbors)
