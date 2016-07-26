@@ -1,9 +1,10 @@
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
-from math import tan, radians
+from math import tan, sin, cos, asin, radians, exp, sqrt, ceil
 from scipy.spatial import cKDTree
 import datetime
+import random
 
 BIN_SEGMENT_LENGTH = 2  # length of bins in meters
 
@@ -13,9 +14,9 @@ class GpsPoint:
 			self.btid = data[4]
 			self.speed = float(data[5])
 			self.timestamp = datetime.datetime.strptime(data[6], '%Y-%m-%d %H:%M:%S+03')
-			self.lon = data[7]
-			self.lat = data[8]
-			self.angle = data[9]
+			self.lon = float(data[7])
+			self.lat = float(data[8])
+			self.angle = float(data[9])
 
 	def get_coordinates(self):
 		"""
@@ -25,6 +26,10 @@ class GpsPoint:
 		return (self.lon, self.lat)
 
 	def __str__(self):
+		return "bt_id:%s, speed:%s, timestamp:%s, lon:%s, lat:%s, angle:%s" % \
+		       (self.btid, self.speed, self.timestamp, self.lon, self.lat, self.angle)
+
+	def __repr__(self):
 		return "bt_id:%s, speed:%s, timestamp:%s, lon:%s, lat:%s, angle:%s" % \
 		       (self.btid, self.speed, self.timestamp, self.lon, self.lat, self.angle)
 
@@ -38,13 +43,15 @@ class line:
 		intercept = at_pt[1] - slope * at_pt[0] if at_pt is not None else 0
 		return line(slope=slope, intercept=intercept)
 
-	def plot(self, color=None, width=2):
-		x = np.arange(-20, 20)
+	def plot(self, color=None, width=2, pt=None):
+		x = np.array([-0.00002, -0.0001, 0, 0.00001, 0.00002])+pt[0]
 		if color is not None:
 			plt.plot(x, self.intercept + self.slope * x, linewidth=width, color=color)
 		else:
 			plt.plot(x, self.intercept + self.slope * x, linewidth=width)
 
+	def __repr__(self):
+		return 'y = %sx + %s' % (self.slope, self.intercept)
 
 def project_point_into_line(pt, parallel_line, perpendecular_line):
 	"""
@@ -56,9 +63,9 @@ def project_point_into_line(pt, parallel_line, perpendecular_line):
     """
 	# 1. find the line that is parallel to parallel line that goes thu pt.
 	intercept = pt[1] - parallel_line.slope * pt[0]
-	line(parallel_line.slope, intercept).plot(color='green', width=1)
+	#line(parallel_line.slope, intercept).plot(color='green', width=1)
 
-	# 2. find intersection point between pt_line and perpendecular_line
+	# 2. find intersection point between pt_line and perpendicular_line
 	X = np.array([[1, - parallel_line.slope], [1, -perpendecular_line.slope]])
 	Y = np.array([intercept, perpendecular_line.intercept])
 	yx = np.linalg.solve(X, Y)
@@ -75,18 +82,50 @@ def line_of_gps_point(pt, angle):
 	a = pt[1] - b * pt[0]
 	return line(intercept=a, slope=b)
 
+def distance_heading_speed(pt1, pt2, sigma_h=0.5, sigma_s=0.5):
+	delta_s = exp(-(pt1['speed'] - pt2['speed']) ** 2 / sigma_s)
+	delta_h = exp(-(pt1['angle'] - pt2['angle']) ** 2 / sigma_h)
+	return delta_s * delta_h
+
+
+def haversine(pt1, pt2):
+	"""
+	Calculate the great circle distance between two points
+	on the earth (specified in decimal degrees)
+	Sofiane: got it from:http://stackoverflow.com/questions/15736995/how-can-i-quickly-estimate-the-distance-between-two-latitude-longitude-points
+	:param pt1: point (lon, lat)
+	:param pt2: point (lon, lat)
+	:return: the distance in meters
+	"""
+
+	lon1 = pt1[0]
+	lat1 = pt1[1]
+	lon2 = pt2[0]
+	lat2 = pt2[1]
+
+	# convert decimal degrees to radians
+	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+
+	# haversine formula
+	dlon = lon2 - lon1
+	dlat = lat2 - lat1
+	a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+	c = 2 * asin(sqrt(a))
+	km = 6367 * c
+	return km * 1000
 
 def find_sample(in_pt, angle, neighbors):
 	# equation of the heading line of the point:
 	eq_heading = line_of_gps_point(in_pt, angle)
-
-	# equation of the perpondecular line to the point's heading line:
+	# equation of the perpendicular line to the point's heading line:
 	eq_perpend = eq_heading.perpendecular(at_pt=in_pt)
+	print 'heading eq:', eq_heading
+	print 'perpendecular eq:', eq_perpend
 
-	# Project all points into the perpendecular line
+	# Project all points into the perpendicular line
 	projected_points = list()
 	for pt in neighbors:
-		intersec_pt = project_point_into_line(pt, eq_heading, eq_perpend)
+		intersec_pt = project_point_into_line(pt.get_coordinates(), eq_heading, eq_perpend)
 		projected_points.append(intersec_pt)
 
 	# Create bins: my trick is the following:
@@ -105,7 +144,13 @@ def find_sample(in_pt, angle, neighbors):
 		axis = ys
 		axis_label = 'y-axis'
 
-	histog = np.histogram(axis, bins=3, density=True)
+	# figure out number of bins: this is based on the width of road lanes!
+	# 1 find the max pairwise distance
+	segment_length = max([haversine(neighbors[i].get_coordinates(), neighbors[j].get_coordinates())\
+	                      for i in range(len(neighbors)) for j in range(i+1, len(neighbors))])
+	nb_bins = int(ceil(segment_length/3.3))
+	print 'nb_bins: ', nb_bins
+	histog = np.histogram(axis, bins=nb_bins, density=True)
 	densities, bins = histog[0], histog[1]
 	max_density_bin = np.argmax(densities)
 	marker = (bins[max_density_bin] + bins[max_density_bin + 1]) / 2
@@ -120,23 +165,27 @@ def find_sample(in_pt, angle, neighbors):
 	# ---------------------
 	# plotting the results |
 	# ---------------------
-	eq_heading.plot(color='blue')
-	eq_perpend.plot(color='red')
-	plt.scatter(in_pt[0], in_pt[1], marker='8', s=100)
+	eq_heading.plot(color='blue', pt=in_pt)
+	eq_perpend.plot(color='red', pt=in_pt)
+	plt.scatter(in_pt[0], in_pt[1], marker='8', s=50, color='r')
+
 	for pt, intersec_pt in zip(neighbors, projected_points):
-		plt.scatter(intersec_pt[0], intersec_pt[1], marker='*', s=50)
-		plt.scatter(pt[0], pt[1])
-	plt.scatter(Sx, Sy, marker='D', s=50)
-	plt.xlim([-2, 10])
-	plt.ylim([-2, 10])
+		plt.scatter(intersec_pt[0], intersec_pt[1], marker='*', s=10)
+		plt.scatter(pt.lon, pt.lat, marker='o')
+	plt.scatter(Sx, Sy, marker='s', s=50, color='green')
+
+	xs, ys = [_.lon for _ in neighbors], [_.lat for _ in neighbors]
+	minx, maxx = min(xs), max(xs)
+	miny, maxy = min(ys), max(ys)
+	plt.xlim([minx-0.00001, maxx+0.00001])
+	plt.ylim([miny-0.00001, maxy+0.00001])
 	# Get x/y-axis in the same aspect
 	plt.gca().set_aspect('equal', adjustable='box')
 	plt.show()
 
 	return (Sx, Sy)
 
-
-def nearest_neighbors(in_pt, points_tree, radius=5):
+def retrieve_neighbors(in_pt, points_tree, radius=5):
 	"""
 	Retrieve all points within a radius to an input point in_pt
 	:param in_pt: intput point
@@ -145,8 +194,8 @@ def nearest_neighbors(in_pt, points_tree, radius=5):
 	:return: list of indexes of neighbors.
 	"""
 
-	points = np.random.randint(50, size=(100, 2))
-	points_tree = cKDTree(points)
+	#points = np.random.randint(50, size=(100, 2))
+	#points_tree = cKDTree(points)
 	neighbors = points_tree.query_ball_point(x=in_pt, r=radius, p=2)
 	return neighbors
 
@@ -169,21 +218,26 @@ def load_data(fname='data/gps_data/gps_points.csv'):
 			data_points.append(pt)
 			raw_points.append(pt.get_coordinates())
 	points_tree = cKDTree(raw_points)
-	return data_points, raw_points, points_tree
+	return np.array(data_points), np.array(raw_points), points_tree
 
 
 if __name__ == "__main__":
-	INPUT_FILE_NAME = 'data/gps_data/gps_points.csv'
+	INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
 	data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
-	print len(data_points), len(raw_points)
-	print data_points[0:3], raw_points[0:3]
+	print 'nb points:',  len(data_points), len(raw_points)
+	print 'points example:', data_points[0:3], raw_points[0:3]
 
 	# input: point and angle:
-	in_pt = [3, 5]
-	angle = 30
+	rand_pt = random.sample(data_points, 1)[0]
+	pt_coordinates = rand_pt.get_coordinates()
+	angle = rand_pt.angle
 
 	# prepare some input neighbors
-	neighbors = np.random.randint(10, size=(100, 2))
+	# neighbors = np.random.randint(10, size=(100, 2))
+
+	neighbor_indexes = retrieve_neighbors(in_pt=pt_coordinates, points_tree=points_tree, radius=0.0001)
+	print 'pt:%s, angle:%s,  has %s neighbors' % (pt_coordinates, angle, len(neighbor_indexes))
+	neighbors = data_points[neighbor_indexes]
 
 	# call find sample method
-	sample_pt = find_sample(in_pt=in_pt, angle=angle, neighbors=neighbors)
+	sample_pt = find_sample(in_pt=pt_coordinates, angle=angle, neighbors=neighbors)
