@@ -1,7 +1,7 @@
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
-from math import tan, sin, cos, asin, radians, exp, sqrt, ceil, atan, pow
+from math import tan, sin, cos, asin, radians, exp, sqrt, ceil, atan, pow, degrees
 from scipy.spatial import cKDTree
 import datetime
 import random
@@ -10,6 +10,7 @@ import operator
 import networkx as nx
 
 BIN_SEGMENT_LENGTH = 2  # length of bins in meters
+
 
 class GpsPoint:
 	def __init__(self, data=None):
@@ -36,13 +37,14 @@ class GpsPoint:
 		return "bt_id:%s, speed:%s, timestamp:%s, lon:%s, lat:%s, angle:%s" % \
 		       (self.btid, self.speed, self.timestamp, self.lon, self.lat, self.angle)
 
+
 class SamplePoint:
 	def __init__(self, speed=None, lon=None, lat=None, angle=None, weight=None):
-			self.speed = speed
-			self.lon = lon
-			self.lat = lat
-			self.angle = angle
-			self.weight = weight
+		self.speed = speed
+		self.lon = lon
+		self.lat = lat
+		self.angle = angle
+		self.weight = weight
 
 	def get_coordinates(self):
 		"""
@@ -76,7 +78,7 @@ class line:
 		return line(slope=slope, intercept=intercept)
 
 	def plot(self, color=None, width=2, pt=None):
-		x = np.array([-0.00002, -0.0001, 0, 0.00001, 0.00002])+pt[0]
+		x = np.array([-0.00002, -0.0001, 0, 0.00001, 0.00002]) + pt[0]
 		if color is not None:
 			plt.plot(x, self.intercept + self.slope * x, linewidth=width, color=color)
 		else:
@@ -84,6 +86,7 @@ class line:
 
 	def __repr__(self):
 		return 'y = %sx + %s' % (self.slope, self.intercept)
+
 
 def project_point_into_line(pt, parallel_line, perpendicular_line):
 	"""
@@ -99,7 +102,7 @@ def project_point_into_line(pt, parallel_line, perpendicular_line):
 		return (perpendicular_line.intercept, pt[1])
 	# 1. find the line that is parallel to parallel line that goes thu pt.
 	intercept = pt[1] - parallel_line.slope * pt[0]
-	#line(parallel_line.slope, intercept).plot(color='green', width=1)
+	# line(parallel_line.slope, intercept).plot(color='green', width=1)
 
 	# 2. find intersection point between pt_line and perpendicular_line
 	X = np.array([[1, - parallel_line.slope], [1, -perpendicular_line.slope]])
@@ -117,6 +120,7 @@ def line_of_gps_point(pt, angle):
 	b = tan(radians(90 - angle))
 	a = pt[1] - b * pt[0]
 	return line(intercept=a, slope=b)
+
 
 def distance_heading_speed(pt1, pt2, sigma_h=0.5, sigma_s=0.5):
 	delta_s = exp(-(pt1.speed - pt2.speed) ** 2 / sigma_s)
@@ -149,6 +153,7 @@ def haversine(pt1, pt2):
 	c = 2 * asin(sqrt(a))
 	km = 6367 * c
 	return km * 1000
+
 
 def load_data(fname='data/gps_data/gps_points.csv'):
 	"""
@@ -188,14 +193,30 @@ def _to_geojson(samples):
 	return geojson
 
 
+def segments_to_geojson(segments, g):
+	"""
+	Generate the geojson object of a list of segments
+	:param samples: list of samples
+	:return: one geojson object that contains all the points.
+	"""
+	geojson = {'type': 'FeatureCollection', 'features': []}
+	for s in segments:
+		feature = {'type': 'Feature', 'properties': {}, 'geometry': {'type': 'LineString', 'coordinates': []}}
+		coordinates = [[g.node[p]['lon'], g.node[p]['lat']] for p in list(s)]
+		feature['geometry']['coordinates'] = coordinates
+		geojson['features'].append(feature)
+	return geojson
+
+
 def _to_samplepoints(geojson):
 	samples = []
 	for s in geojson['features']:
 		if s['geometry']['coordinates'][0] == 0 or s['geometry']['coordinates'][1] == 0: continue
 		samples.append(SamplePoint(speed=s['properties']['speed'], angle=s['properties']['speed'],
-		                           weight=s['properties']['wight'], lon=s['geometry']['coordinates'][0],
+		                           weight=s['properties']['weight'], lon=s['geometry']['coordinates'][0],
 		                           lat=s['geometry']['coordinates'][1]))
 	return samples
+
 
 def retrieve_neighbors(in_pt, points_tree, radius=5):
 	"""
@@ -206,14 +227,16 @@ def retrieve_neighbors(in_pt, points_tree, radius=5):
 	:return: list of indexes of neighbors.
 	"""
 
-	#points = np.random.randint(50, size=(100, 2))
-	#points_tree = cKDTree(points)
+	# points = np.random.randint(50, size=(100, 2))
+	# points_tree = cKDTree(points)
 	neighbors = points_tree.query_ball_point(x=in_pt, r=radius, p=2)
 	return neighbors
 
+
 def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 	if len(neighbors) < 2:
-		return SamplePoint(lon=rand_pt.lon, lat=rand_pt.lat, speed=rand_pt.speed, angle=rand_pt.angle, weight=len(neighbors))
+		return SamplePoint(lon=rand_pt.lon, lat=rand_pt.lat, speed=rand_pt.speed, angle=rand_pt.angle,
+		                   weight=len(neighbors))
 
 	in_pt = rand_pt.get_coordinates()
 	angle = rand_pt.angle
@@ -222,8 +245,8 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 	eq_heading = line_of_gps_point(in_pt, angle)
 	# equation of the perpendicular line to the point's heading line:
 	eq_perpend = eq_heading.perpendecular(at_pt=in_pt)
-	#print 'heading eq:', eq_heading
-	#print 'perpendecular eq:', eq_perpend
+	# print 'heading eq:', eq_heading
+	# print 'perpendecular eq:', eq_perpend
 
 	# Project all points into the perpendicular line
 	projected_points = list()
@@ -248,10 +271,10 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 		axis_label = 'y-axis'
 
 	# figure out number of bins: this is based on the width of road lanes!
-	LANE_WIDTH = 3.3 # lane width in meters
-	segment_length = max([haversine(neighbors[i].get_coordinates(), neighbors[j].get_coordinates())\
-	                      for i in range(len(neighbors)) for j in range(i+1, len(neighbors))])
-	nb_bins = int(ceil(segment_length/LANE_WIDTH))
+	LANE_WIDTH = 3.3  # lane width in meters
+	segment_length = max([haversine(neighbors[i].get_coordinates(), neighbors[j].get_coordinates()) \
+	                      for i in range(len(neighbors)) for j in range(i + 1, len(neighbors))])
+	nb_bins = int(ceil(segment_length / LANE_WIDTH))
 	# Handle the case where nb_bins = 0 / this happens if all points are superposed (collision)
 	if nb_bins == 0:
 		nb_bins = 1
@@ -259,7 +282,7 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 	densities, bin_limits = histog[0], histog[1]
 
 	# Find the relevant/central bin:
-	#common_denominator = sum([distance_heading_speed(rand_pt, nei) for nei in neighbors])
+	# common_denominator = sum([distance_heading_speed(rand_pt, nei) for nei in neighbors])
 	bin_votes = []
 	for i, (bmin, bmax) in enumerate(zip(bin_limits[:-1], bin_limits[1:])):
 		# find neighbors that are inside the bin limits
@@ -269,10 +292,10 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 					(axis_label == 'y-axis' and nei.lat >= bmin and nei.lat < bmax):
 				votes += distance_heading_speed(rand_pt, nei)
 		bin_votes.append(votes)
-		#bin_votes.append(votes/common_denominator)
+	# bin_votes.append(votes/common_denominator)
 	max_density_bin = np.argmax(bin_votes)
 
-	#max_density_bin = np.argmax(densities)
+	# max_density_bin = np.argmax(densities)
 	marker = (bin_limits[max_density_bin] + bin_limits[max_density_bin + 1]) / 2
 	# find the other component of the sample point: parallel to x-axis or y-axis
 	if axis_label == 'x-axis':
@@ -303,8 +326,8 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 	xs, ys = [_.lon for _ in neighbors], [_.lat for _ in neighbors]
 	minx, maxx = min(xs), max(xs)
 	miny, maxy = min(ys), max(ys)
-	plt.xlim([minx-0.00001, maxx+0.00001])
-	plt.ylim([miny-0.00001, maxy+0.00001])
+	plt.xlim([minx - 0.00001, maxx + 0.00001])
+	plt.ylim([miny - 0.00001, maxy + 0.00001])
 	# Get x/y-axis in the same aspect
 	plt.gca().set_aspect('equal', adjustable='box')
 	plt.show()
@@ -314,10 +337,10 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 def traj_meanshift_sampling():
 	INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
 	RADIUS = 0.0002
-	ANGLE_TOLERANCE = 60 # the tolerance of angle to consider two points are being heading toward the same overall direction
+	ANGLE_TOLERANCE = 60  # the tolerance of angle to consider two points are being heading toward the same overall direction
 	data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
 	Npoints = len(data_points)
-	print 'nb points:',  len(data_points), 'points example:', data_points[0], raw_points[0]
+	print 'nb points:', len(data_points), 'points example:', data_points[0], raw_points[0]
 
 	samples = list()
 	removed_points = set()
@@ -328,7 +351,8 @@ def traj_meanshift_sampling():
 		rand_pt = data_points[rand_index]
 
 		# Find all neighbors in the given radius: RADIUS
-		neighbor_indexes = [rand_index] + retrieve_neighbors(in_pt=rand_pt.get_coordinates(), points_tree=points_tree, radius=RADIUS)
+		neighbor_indexes = [rand_index] + retrieve_neighbors(in_pt=rand_pt.get_coordinates(), points_tree=points_tree,
+		                                                     radius=RADIUS)
 		remaining_neighbor_indexes = list(set(neighbor_indexes) - removed_points)
 		neighbor_indexes = []
 		neighbors = []
@@ -337,9 +361,9 @@ def traj_meanshift_sampling():
 				neighbors.append(data_points[val])
 				neighbor_indexes.append(val)
 
-		#neighbors = data_points[remaining_neighbor_indexes]
+		# neighbors = data_points[remaining_neighbor_indexes]
 		# Only consider neighbors that are supposed to be in the same heading direction.
-		#neighbors = [nei for nei in data_points[remaining_neighbor_indexes] if abs(nei.angle - rand_pt.angle) <= ANGLE_TOLERANCE]
+		# neighbors = [nei for nei in data_points[remaining_neighbor_indexes] if abs(nei.angle - rand_pt.angle) <= ANGLE_TOLERANCE]
 
 		# call find center method
 		sample_pt = find_sample(rand_pt=rand_pt, neighbors=neighbors, draw_output=False)
@@ -348,7 +372,6 @@ def traj_meanshift_sampling():
 		# Remove elements
 		removed_points = removed_points.union(neighbor_indexes)
 		available_point_indexes = sorted(set(available_point_indexes) - removed_points)
-
 
 	print 'NB SAMPLES: %s' % len(samples)
 	samples_geojson = _to_geojson(samples)
@@ -363,7 +386,7 @@ def traj_meanshift_sampling():
 	plt.show()
 
 
-def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_threshold=30):
+def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_threshold=30):
 	"""
 	Create a graph from the samples. Nodes are samples, edges are road segments.
 	:param samples:
@@ -384,70 +407,73 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_thr
 	samples_tree = cKDTree(simple_samples)
 
 	# 2. for each element Si find Sp and Sq to form a smooth segment Sp-->Si-->Sq
-	#node_degree = {_:0 for _ in range(len(samples))} # dictionary of node: degree
+	# node_degree = {_:0 for _ in range(len(samples))} # dictionary of node: degree
 	g = nx.DiGraph()
 	for ind, s in enumerate(samples):
 		g.add_node(ind, speed=s.speed, angle=s.angle, lon=s.lon, lat=s.lat, weight=s.weight)
 
-	edges = set() # list of (source, destination)
 	for i, Si in enumerate(samples):
-		print i, 'processing: ', Si
+		# print i, 'processing: ', Si
 		if nx.degree(g, i) > 1:
 			continue
 
-		neighbors = [samples[ind] for ind in retrieve_neighbors(simple_samples[i], samples_tree, radius=dist_threshold)\
-		              if samples[ind].lon != Si.lon or samples[ind].lat != Si.lat]
+		neighbors = [samples[ind] for ind in retrieve_neighbors(simple_samples[i], samples_tree, radius=dist_threshold) \
+		             if samples[ind].lon != Si.lon or samples[ind].lat != Si.lat]
+
 		angle_pi_neighbors = []
 		angle_iq_neighbors = []
 		magnitude_v_neighbors = []
 		for nei in neighbors:
-			angle_pi_neighbors.append(atan((Si.lat - nei.lat)/(Si.lon - nei.lon)))
-			angle_iq_neighbors.append(atan((nei.lat - Si.lat) / (nei.lon - Si.lon)))
+			angle_pi_neighbors.append(
+				degrees(atan((Si.lat - nei.lat) / (Si.lon - nei.lon))) if Si.lon - nei.lon != 0 else 90)
+			angle_iq_neighbors.append(
+				degrees(atan((nei.lat - Si.lat) / (nei.lon - Si.lon))) if nei.lon - Si.lon != 0 else 90)
 			magnitude_v_neighbors.append(sqrt(pow((Si.lon - nei.lon), 2) + pow((Si.lat - nei.lat), 2)))
-
 		# Find Sp
 		Sp_candidates_index = [ind for ind, sp in enumerate(neighbors) if (abs(sp.angle - Si.angle) < angle_threshold) \
-		                       and (abs(angle_pi_neighbors[ind] - Si.angle) < angle_threshold)\
-		                       and (nx.degree(g, ind) < 2)]
+		                       and (abs(angle_pi_neighbors[ind] - Si.angle) < angle_threshold) \
+		                       and (g.degree(ind) < 2)]
 
 		if len(Sp_candidates_index) == 1:
 			Sp_index = Sp_candidates_index[0]
 			g.add_edge(Sp_index, i)
-		elif  len(Sp_candidates_index) > 1:
-			scores = np.array([magnitude_v_neighbors[ind]*angle_pi_neighbors[ind]*abs(Si.angle - neighbors[ind].angle)\
-		                   for ind in Sp_candidates_index])
-			Sp_index = Sp_candidates_index[np.argmax(scores)]
+		elif len(Sp_candidates_index) > 1:
+			scores = np.array(
+					[magnitude_v_neighbors[ind] * abs(angle_pi_neighbors[ind]) * abs(Si.angle - neighbors[ind].angle) \
+					 for ind in Sp_candidates_index])
+			Sp_index = Sp_candidates_index[np.argmin(scores)]
 			g.add_edge(Sp_index, i)
-		#Sp = neighbors[Sp_index]
-		#node_degree[Sp_index] += 1
-		#node_degree[i] += 1
-		#edges.add((Sp_index, i))
-
 		# Find Sq
-		Sq_candidates_index = [ind for ind, sq in enumerate(neighbors) if (abs(sq.angle - Si.angle) < angle_threshold)\
-		                       and (abs(angle_iq_neighbors[ind] - Si.angle) < angle_threshold)\
-		                       and nx.degree(g, ind) < 2]
+		Sq_candidates_index = [ind for ind, sq in enumerate(neighbors) if (abs(sq.angle - Si.angle) < angle_threshold) \
+		                       and (abs(angle_iq_neighbors[ind] - Si.angle) < angle_threshold) \
+		                       and (g.degree(ind) < 2)]
 
 		if len(Sq_candidates_index) == 1:
 			Sq_index = Sq_candidates_index[0]
-			Sq = neighbors[Sq_index]
+			g.add_edge(i, Sq_index)
 		elif len(Sq_candidates_index) > 1:
-			scores = np.array([magnitude_v_neighbors[ind]*angle_iq_neighbors[ind]*abs(Si.angle - neighbors[ind].angle)\
-		                   for ind in Sq_candidates_index])
-			Sq_index = Sq_candidates_index[np.argmax(scores)]
-			Sq = neighbors[Sq_index]
-		#node_degree[Sq_index] += 1
-		#node_degree[i] += 1
-		#edges.add((i, Sq_index))
-		g.add_edge(i, Sq_index)
-	print 'Graph generated. N=%s, E=%s, CC=%s' % (len(g), len(g.edges()), nx.connected_components(g))
+			scores = np.array(
+					[magnitude_v_neighbors[ind] * abs(angle_iq_neighbors[ind]) * abs(Si.angle - neighbors[ind].angle) \
+					 for ind in Sq_candidates_index])
+			Sq_index = Sq_candidates_index[np.argmin(scores)]
+			# node_degree[Sq_index] += 1
+			# node_degree[i] += 1
+			# edges.add((i, Sq_index))
+			g.add_edge(i, Sq_index)
+		if len(Sp_candidates_index) + len(Sq_candidates_index) > 0:
+			print 'Nb neighbors:', len(neighbors), len(Sp_candidates_index), len(Sq_candidates_index)
+
+	segments = sorted(nx.strongly_connected_components(g), key=len, reverse=True)
+
+	geojson = segments_to_geojson(segments, g)
+	json.dump(geojson, open('data/gps_data/gps_segments_07-11.geojson', 'w'))
 
 
 if __name__ == "__main__":
-	#1. find samples
+	# 1. find samples
 	# traj_meanshift_sampling()
 
-	#2. find segments
+	# 2. find segments
 	road_segment_clustering()
 
 
@@ -455,19 +481,19 @@ if __name__ == "__main__":
 
 
 
-	# INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
-	# RADIUS = 0.0001
-	# data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
-	# print 'nb points:',  len(data_points), 'points example:', data_points[0], raw_points[0]
-	#
-	# # input: point and angle:
-	# rand_pt = random.sample(data_points, 1)[0]
-	#
-	# # Find all neighbors in the given radius radius
-	# # neighbors = np.random.randint(10, size=(100, 2))
-	# neighbor_indexes = retrieve_neighbors(in_pt=rand_pt.get_coordinates(), points_tree=points_tree, radius=RADIUS)
-	# print 'pt:%s, angle:%s,  has %s neighbors' % (rand_pt.get_coordinates(), rand_pt.angle, len(neighbor_indexes))
-	# neighbors = data_points[neighbor_indexes]
-	#
-	# # call find center method
-	# sample_pt = find_center(rand_pt=rand_pt, neighbors=neighbors)
+# INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
+# RADIUS = 0.0001
+# data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
+# print 'nb points:',  len(data_points), 'points example:', data_points[0], raw_points[0]
+#
+# # input: point and angle:
+# rand_pt = random.sample(data_points, 1)[0]
+#
+# # Find all neighbors in the given radius radius
+# # neighbors = np.random.randint(10, size=(100, 2))
+# neighbor_indexes = retrieve_neighbors(in_pt=rand_pt.get_coordinates(), points_tree=points_tree, radius=RADIUS)
+# print 'pt:%s, angle:%s,  has %s neighbors' % (rand_pt.get_coordinates(), rand_pt.angle, len(neighbor_indexes))
+# neighbors = data_points[neighbor_indexes]
+#
+# # call find center method
+# sample_pt = find_center(rand_pt=rand_pt, neighbors=neighbors)
