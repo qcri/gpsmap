@@ -208,7 +208,7 @@ def find_center(rand_pt=None, neighbors=None, draw_output=False):
 		bin_votes.append(votes)
 		#bin_votes.append(votes/common_denominator)
 	max_density_bin = np.argmax(bin_votes)
-	print 'nb bins: %s, max bin: %s' % (nb_bins, max_density_bin)
+	#print 'nb bins: %s, max bin: %s' % (nb_bins, max_density_bin)
 	#max_density_bin = np.argmax(densities)
 	marker = (bin_limits[max_density_bin] + bin_limits[max_density_bin + 1]) / 2
 	# find the other component of the sample point: parallel to x-axis or y-axis
@@ -282,22 +282,23 @@ def load_data(fname='data/gps_data/gps_points.csv'):
 
 def summarize_gps_cloud():
 	INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
-	RADIUS = 0.0001
+	RADIUS = 0.0002
 	data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
+	Npoints = len(data_points)
 	print 'nb points:',  len(data_points), 'points example:', data_points[0], raw_points[0]
+
 	samples = list()
 	removed_points = set()
-	copy_data_points = np.copy(data_points)
 	available_point_indexes = np.arange(0, len(data_points))
 	while len(available_point_indexes) > 0:
 		print 'THERE ARE %s points, removed %s points' % (len(available_point_indexes), len(removed_points))
 		rand_index = random.sample(available_point_indexes, 1)[0]
-		rand_pt = copy_data_points[rand_index]
+		rand_pt = data_points[rand_index]
 
 		# Find all neighbors in the given radius: RADIUS
-		neighbor_indexes = retrieve_neighbors(in_pt=rand_pt.get_coordinates(), points_tree=points_tree, radius=RADIUS)
+		neighbor_indexes = [rand_index] + retrieve_neighbors(in_pt=rand_pt.get_coordinates(), points_tree=points_tree, radius=RADIUS)
 		remaining_neighbor_indexes = list(set(neighbor_indexes) - removed_points)
-		neighbors = copy_data_points[remaining_neighbor_indexes]
+		neighbors = data_points[remaining_neighbor_indexes]
 
 		print 'NB Neighbors: %s' % len(remaining_neighbor_indexes), ' point: ', rand_pt.get_coordinates()
 		# call find center method
@@ -305,10 +306,9 @@ def summarize_gps_cloud():
 		samples.append(sample_pt)
 
 		# Remove elements
-		available_point_indexes = np.delete(available_point_indexes, list(remaining_neighbor_indexes))
 		removed_points = removed_points.union(remaining_neighbor_indexes)
-		if len(removed_points) > 100000:
-			break
+		available_point_indexes = sorted(set(available_point_indexes) - removed_points)
+
 
 	print 'NB SAMPLES: %s' % len(samples)
 	for s in samples:
