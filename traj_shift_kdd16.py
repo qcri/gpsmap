@@ -5,6 +5,8 @@ from math import tan, sin, cos, asin, radians, exp, sqrt, ceil
 from scipy.spatial import cKDTree
 import datetime
 import random
+import json
+
 
 BIN_SEGMENT_LENGTH = 2  # length of bins in meters
 
@@ -190,7 +192,7 @@ def find_center(rand_pt=None, neighbors=None, draw_output=False):
 	                      for i in range(len(neighbors)) for j in range(i+1, len(neighbors))])
 	nb_bins = int(ceil(segment_length/LANE_WIDTH))
 	# Handle the case where nb_bins = 0 / this happens if all points are superposed (collision)
-	if nb_bins  == 0:
+	if nb_bins == 0:
 		nb_bins = 1
 	histog = np.histogram(axis, bins=nb_bins, density=True)
 	densities, bin_limits = histog[0], histog[1]
@@ -208,7 +210,7 @@ def find_center(rand_pt=None, neighbors=None, draw_output=False):
 		bin_votes.append(votes)
 		#bin_votes.append(votes/common_denominator)
 	max_density_bin = np.argmax(bin_votes)
-	#print 'nb bins: %s, max bin: %s' % (nb_bins, max_density_bin)
+
 	#max_density_bin = np.argmax(densities)
 	marker = (bin_limits[max_density_bin] + bin_limits[max_density_bin + 1]) / 2
 	# find the other component of the sample point: parallel to x-axis or y-axis
@@ -220,7 +222,9 @@ def find_center(rand_pt=None, neighbors=None, draw_output=False):
 		Sx = (Sy - eq_perpend.intercept) / eq_perpend.slope
 
 	if draw_output == False:
-		return SamplePoint(lon=Sx, lat=Sy, speed=rand_pt.speed, angle=rand_pt.angle, weight=len(neighbors))
+		avg_speed = sum([nei.speed for nei in neighbors]) / len(neighbors)
+		avg_heading = sum([nei.angle for nei in neighbors]) / len(neighbors)
+		return SamplePoint(lon=Sx, lat=Sy, speed=avg_speed, angle=avg_heading, weight=len(neighbors))
 
 	# ---------------------
 	# plotting the results |
@@ -280,9 +284,28 @@ def load_data(fname='data/gps_data/gps_points.csv'):
 	points_tree = cKDTree(raw_points)
 	return np.array(data_points), np.array(raw_points), points_tree
 
+
+def _to_geojson(samples):
+	"""
+	Generate the geojson object of a list of sample points
+	:param samples: list of samples
+	:return: one geojson object that contains all the points.
+	"""
+	geojson = {'type': 'FeatureCollection', 'features': []}
+	for s in samples:
+		feature = {'type': 'Feature', 'properties': {}, 'geometry': {'type': 'Point', 'coordinates': []}}
+		feature['geometry']['coordinates'] = [s.lon, s.lat]
+		feature['properties']['speed'] = s.speed
+		feature['properties']['wight'] = s.weight
+		feature['properties']['angle'] = s.angle
+		geojson['features'].append(feature)
+	return geojson
+
+
 def summarize_gps_cloud():
 	INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
 	RADIUS = 0.0002
+	ANGLE_TOLERANCE = 60 # the tolerance of angle to consider two points are being heading toward the same overall direction
 	data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
 	Npoints = len(data_points)
 	print 'nb points:',  len(data_points), 'points example:', data_points[0], raw_points[0]
@@ -298,19 +321,30 @@ def summarize_gps_cloud():
 		# Find all neighbors in the given radius: RADIUS
 		neighbor_indexes = [rand_index] + retrieve_neighbors(in_pt=rand_pt.get_coordinates(), points_tree=points_tree, radius=RADIUS)
 		remaining_neighbor_indexes = list(set(neighbor_indexes) - removed_points)
-		neighbors = data_points[remaining_neighbor_indexes]
+		neighbor_indexes = []
+		neighbors = []
+		for val in remaining_neighbor_indexes:
+			if abs(data_points[val].angle - rand_pt.angle) <= ANGLE_TOLERANCE:
+				neighbors.append(data_points[val])
+				neighbor_indexes.append(val)
 
-		print 'NB Neighbors: %s' % len(remaining_neighbor_indexes), ' point: ', rand_pt.get_coordinates()
+		#neighbors = data_points[remaining_neighbor_indexes]
+		# Only consider neighbors that are supposed to be in the same heading direction.
+		#neighbors = [nei for nei in data_points[remaining_neighbor_indexes] if abs(nei.angle - rand_pt.angle) <= ANGLE_TOLERANCE]
+
 		# call find center method
 		sample_pt = find_center(rand_pt=rand_pt, neighbors=neighbors, draw_output=False)
 		samples.append(sample_pt)
 
 		# Remove elements
-		removed_points = removed_points.union(remaining_neighbor_indexes)
+		removed_points = removed_points.union(neighbor_indexes)
 		available_point_indexes = sorted(set(available_point_indexes) - removed_points)
 
 
 	print 'NB SAMPLES: %s' % len(samples)
+	samples_geojson = _to_geojson(samples)
+	json.dump(samples_geojson, open('data/gps_data/gps_samples_07-11.geojson', 'w'))
+
 	for s in samples:
 		if s.lon > 50:
 			plt.scatter(s.lon, s.lat)
