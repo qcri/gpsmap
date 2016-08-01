@@ -218,7 +218,7 @@ def _to_samplepoints(geojson):
 	return samples
 
 
-def retrieve_neighbors(in_pt, points_tree, radius=5):
+def retrieve_neighbors(in_pt, points_tree, radius=0.005):
 	"""
 	Retrieve all points within a radius to an input point in_pt
 	:param in_pt: intput point
@@ -227,8 +227,6 @@ def retrieve_neighbors(in_pt, points_tree, radius=5):
 	:return: list of indexes of neighbors.
 	"""
 
-	# points = np.random.randint(50, size=(100, 2))
-	# points_tree = cKDTree(points)
 	neighbors = points_tree.query_ball_point(x=in_pt, r=radius, p=2)
 	return neighbors
 
@@ -400,7 +398,7 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 		data = json.load(open('data/gps_data/gps_samples_07-11.geojson'))
 		samples = _to_samplepoints(data)
 
-	print len(samples)
+	print 'NB nodes:', len(samples)
 	# 1. Sort samples by weight, and create KD-Tree
 	samples.sort(key=operator.attrgetter('weight'), reverse=True)
 	simple_samples = [(s.lon, s.lat) for s in samples]
@@ -412,28 +410,38 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 	for ind, s in enumerate(samples):
 		g.add_node(ind, speed=s.speed, angle=s.angle, lon=s.lon, lat=s.lat, weight=s.weight)
 
-	for i, Si in enumerate(samples):
-		# print i, 'processing: ', Si
-		if nx.degree(g, i) > 1:
+	for i, Si in enumerate(samples[:1]):
+		print i, 'processing: ', Si
+		if g.degree(i) > 1:
+			print 'non treated'
 			continue
 
-		neighbors = [samples[ind] for ind in retrieve_neighbors(simple_samples[i], samples_tree, radius=dist_threshold) \
+		neighbors_index = [ind for ind in retrieve_neighbors(simple_samples[i], samples_tree, radius=dist_threshold)\
 		             if samples[ind].lon != Si.lon or samples[ind].lat != Si.lat]
+		neighbors = [samples[ind] for ind in neighbors_index]
 
 		angle_pi_neighbors = []
 		angle_iq_neighbors = []
 		magnitude_v_neighbors = []
+		haversine_v_neighbors = []
 		for nei in neighbors:
+			print 'Nei:', nei.lon, nei.lat
 			angle_pi_neighbors.append(
 				degrees(atan((Si.lat - nei.lat) / (Si.lon - nei.lon))) if Si.lon - nei.lon != 0 else 90)
 			angle_iq_neighbors.append(
 				degrees(atan((nei.lat - Si.lat) / (nei.lon - Si.lon))) if nei.lon - Si.lon != 0 else 90)
 			magnitude_v_neighbors.append(sqrt(pow((Si.lon - nei.lon), 2) + pow((Si.lat - nei.lat), 2)))
+			haversine_v_neighbors.append(haversine((Si.lon, Si.lat), (nei.lon, nei.lat)))
+
 		# Find Sp
 		Sp_candidates_index = [ind for ind, sp in enumerate(neighbors) if (abs(sp.angle - Si.angle) < angle_threshold) \
 		                       and (abs(angle_pi_neighbors[ind] - Si.angle) < angle_threshold) \
 		                       and (g.degree(ind) < 2)]
-
+		print 'angle pi:', angle_pi_neighbors
+		print 'angle delta:', [abs(sp.angle - Si.angle) for sp in neighbors]
+		print 'magnitude:', magnitude_v_neighbors
+		print 'haversine:', haversine_v_neighbors
+		print 'SP candidates:', Sp_candidates_index
 		if len(Sp_candidates_index) == 1:
 			Sp_index = Sp_candidates_index[0]
 			g.add_edge(Sp_index, i)
@@ -443,6 +451,8 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 					 for ind in Sp_candidates_index])
 			Sp_index = Sp_candidates_index[np.argmin(scores)]
 			g.add_edge(Sp_index, i)
+		print 'scores:', scores
+		print 'sp_index:', Sp_index
 		# Find Sq
 		Sq_candidates_index = [ind for ind, sq in enumerate(neighbors) if (abs(sq.angle - Si.angle) < angle_threshold) \
 		                       and (abs(angle_iq_neighbors[ind] - Si.angle) < angle_threshold) \
@@ -464,17 +474,20 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 			print 'Nb neighbors:', len(neighbors), len(Sp_candidates_index), len(Sq_candidates_index)
 
 	segments = sorted(nx.strongly_connected_components(g), key=len, reverse=True)
+	print 'EDGES:', g.edges()
 
-	geojson = segments_to_geojson(segments, g)
+	geojson = segments_to_geojson(g.edges(), g)
 	json.dump(geojson, open('data/gps_data/gps_segments_07-11.geojson', 'w'))
-
+	print 'NB edges:', len(g.edges())
+	for e in g.edges():
+		print 'Hav:', haversine(simple_samples[e[0]], simple_samples[e[1]])
 
 if __name__ == "__main__":
 	# 1. find samples
 	# traj_meanshift_sampling()
 
 	# 2. find segments
-	road_segment_clustering()
+	road_segment_clustering(minL=100, dist_threshold=0.0005, angle_threshold=90)
 
 
 
