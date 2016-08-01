@@ -212,7 +212,7 @@ def _to_samplepoints(geojson):
 	samples = []
 	for s in geojson['features']:
 		if s['geometry']['coordinates'][0] == 0 or s['geometry']['coordinates'][1] == 0: continue
-		samples.append(SamplePoint(speed=s['properties']['speed'], angle=s['properties']['speed'],
+		samples.append(SamplePoint(speed=s['properties']['speed'], angle=s['properties']['angle'],
 		                           weight=s['properties']['weight'], lon=s['geometry']['coordinates'][0],
 		                           lat=s['geometry']['coordinates'][1]))
 	return samples
@@ -384,6 +384,23 @@ def traj_meanshift_sampling():
 	plt.show()
 
 
+def heading_vector_re_north(s, d):
+	"""
+	compute the vector angle from the north (north = 0 degree)
+	:param s: source point
+	:param d: destination point
+	:return: angle in degrees from the north
+	"""
+	num = d.lat - s.lat
+	den = d.lon - s.lon
+	if den == 0 and num > 0:
+		angle = 90
+	elif den == 0 and num < 0:
+		angle = -90
+	else:
+		angle = degrees(atan(num / den))
+	return -1 * angle + 90
+
 def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_threshold=30):
 	"""
 	Create a graph from the samples. Nodes are samples, edges are road segments.
@@ -410,9 +427,9 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 	for ind, s in enumerate(samples):
 		g.add_node(ind, speed=s.speed, angle=s.angle, lon=s.lon, lat=s.lat, weight=s.weight)
 
-	for i, Si in enumerate(samples[:1]):
+	for i, Si in enumerate(samples):
 		print i, 'processing: ', Si
-		if g.degree(i) > 1:
+		if g.degree(i) > 2:
 			print 'non treated'
 			continue
 
@@ -425,69 +442,68 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 		magnitude_v_neighbors = []
 		haversine_v_neighbors = []
 		for nei in neighbors:
-			print 'Nei:', nei.lon, nei.lat
-			angle_pi_neighbors.append(
-				degrees(atan((Si.lat - nei.lat) / (Si.lon - nei.lon))) if Si.lon - nei.lon != 0 else 90)
-			angle_iq_neighbors.append(
-				degrees(atan((nei.lat - Si.lat) / (nei.lon - Si.lon))) if nei.lon - Si.lon != 0 else 90)
+			angle_pi_neighbors.append(heading_vector_re_north(nei, Si))
+			angle_iq_neighbors.append(heading_vector_re_north(Si, nei))
 			magnitude_v_neighbors.append(sqrt(pow((Si.lon - nei.lon), 2) + pow((Si.lat - nei.lat), 2)))
 			haversine_v_neighbors.append(haversine((Si.lon, Si.lat), (nei.lon, nei.lat)))
 
 		# Find Sp
 		Sp_candidates_index = [ind for ind, sp in enumerate(neighbors) if (abs(sp.angle - Si.angle) < angle_threshold) \
 		                       and (abs(angle_pi_neighbors[ind] - Si.angle) < angle_threshold) \
-		                       and (g.degree(ind) < 2)]
+		                       and (g.degree(neighbors_index[ind]) < 3)]
+		Sp_candidates = [neighbors_index[ind] for ind in Sp_candidates_index]
+
 		print 'angle pi:', angle_pi_neighbors
 		print 'angle delta:', [abs(sp.angle - Si.angle) for sp in neighbors]
 		print 'magnitude:', magnitude_v_neighbors
 		print 'haversine:', haversine_v_neighbors
 		print 'SP candidates:', Sp_candidates_index
+		print 'neighbors:', neighbors_index
+
 		if len(Sp_candidates_index) == 1:
-			Sp_index = Sp_candidates_index[0]
+			Sp_index = Sp_candidates[0]
 			g.add_edge(Sp_index, i)
 		elif len(Sp_candidates_index) > 1:
 			scores = np.array(
-					[magnitude_v_neighbors[ind] * abs(angle_pi_neighbors[ind]) * abs(Si.angle - neighbors[ind].angle) \
+					[magnitude_v_neighbors[ind] * abs(angle_pi_neighbors[ind] - Si.angle) * abs(Si.angle - neighbors[ind].angle) \
 					 for ind in Sp_candidates_index])
-			Sp_index = Sp_candidates_index[np.argmin(scores)]
+			scores = np.array(
+				[magnitude_v_neighbors[ind] for ind in Sp_candidates_index])
+			Sp_index = Sp_candidates[np.argmin(scores)]
 			g.add_edge(Sp_index, i)
-		print 'scores:', scores
-		print 'sp_index:', Sp_index
+			print 'scores:', scores
+			print 'sp_index:', Sp_index
 		# Find Sq
 		Sq_candidates_index = [ind for ind, sq in enumerate(neighbors) if (abs(sq.angle - Si.angle) < angle_threshold) \
 		                       and (abs(angle_iq_neighbors[ind] - Si.angle) < angle_threshold) \
-		                       and (g.degree(ind) < 2)]
+		                       and (g.degree(neighbors_index[ind]) < 3)]
+		Sq_candidates = [neighbors_index[ind] for ind in Sq_candidates_index]
 
 		if len(Sq_candidates_index) == 1:
-			Sq_index = Sq_candidates_index[0]
+			Sq_index = Sq_candidates[0]
 			g.add_edge(i, Sq_index)
 		elif len(Sq_candidates_index) > 1:
 			scores = np.array(
-					[magnitude_v_neighbors[ind] * abs(angle_iq_neighbors[ind]) * abs(Si.angle - neighbors[ind].angle) \
+					[magnitude_v_neighbors[ind] * abs(angle_iq_neighbors[ind] - Si.angle) * abs(Si.angle - neighbors[ind].angle) \
 					 for ind in Sq_candidates_index])
-			Sq_index = Sq_candidates_index[np.argmin(scores)]
-			# node_degree[Sq_index] += 1
-			# node_degree[i] += 1
-			# edges.add((i, Sq_index))
+			scores = np.array(
+					[magnitude_v_neighbors[ind] for ind in Sq_candidates_index])
+			Sq_index = Sq_candidates[np.argmin(scores)]
 			g.add_edge(i, Sq_index)
-		if len(Sp_candidates_index) + len(Sq_candidates_index) > 0:
-			print 'Nb neighbors:', len(neighbors), len(Sp_candidates_index), len(Sq_candidates_index)
+
 
 	segments = sorted(nx.strongly_connected_components(g), key=len, reverse=True)
-	print 'EDGES:', g.edges()
 
-	geojson = segments_to_geojson(g.edges(), g)
+	geojson = segments_to_geojson(segments, g)
 	json.dump(geojson, open('data/gps_data/gps_segments_07-11.geojson', 'w'))
 	print 'NB edges:', len(g.edges())
-	for e in g.edges():
-		print 'Hav:', haversine(simple_samples[e[0]], simple_samples[e[1]])
 
 if __name__ == "__main__":
 	# 1. find samples
-	# traj_meanshift_sampling()
+	#traj_meanshift_sampling()
 
 	# 2. find segments
-	road_segment_clustering(minL=100, dist_threshold=0.0005, angle_threshold=90)
+	road_segment_clustering(minL=100, dist_threshold=0.0009, angle_threshold=90)
 
 
 
