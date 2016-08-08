@@ -413,11 +413,27 @@ def vector_direction_re_north(s, d):
 	# find the new coordinates of the destination point in a plan originated at source.
 	new_d_lon = d.lon - s.lon
 	new_d_lat = d.lat - s.lat
-
+	 # angle = -angle + 90 is used to change the angle reference from east to north.
 	angle = -degrees(atan2(new_d_lat, new_d_lon)) + 90
+
+	# the following is required to move the degrees from -180, 180 to 0, 360
 	if angle < 0:
 		angle = angle + 360
 	return angle
+
+
+def get_paths(g):
+	edges = {s:d for s,d in g.edges()}
+	sources = [s for s in edges.keys() if g.in_degree(s) == 0]
+	paths = []
+	for source in sources:
+		path = [source]
+		s = source
+		while (s in edges.keys()):
+			path.append(edges[s])
+			s = edges[s]
+		paths.append(path)
+	return paths
 
 def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_threshold=30):
 	"""
@@ -482,27 +498,26 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 			g.add_edge(Sp_index, i)
 
 		# Find Sq
-		# Sq_candidates_index = [ind for ind, sq in enumerate(neighbors) if (abs(sq.angle - Si.angle) < angle_threshold) \
-		#                        and (abs(angle_iq_neighbors[ind] - Si.angle) < angle_threshold) \
-		#                        and (g.degree(neighbors_index[ind]) < 3)]
-		# Sq_candidates = [neighbors_index[ind] for ind in Sq_candidates_index]
-		#
-		# if len(Sq_candidates_index) > 0:
-		# 	scores = np.array(
-		# 			[magnitude_v_neighbors[ind] * abs(angle_iq_neighbors[ind] - Si.angle) * abs(Si.angle - neighbors[ind].angle) \
-		# 			 for ind in Sq_candidates_index])
-		# 	scores = np.array(
-		# 			[magnitude_v_neighbors[ind] for ind in Sq_candidates_index])
-		# 	Sq_index = Sq_candidates[np.argmax(scores)]
-		# 	g.add_edge(i, Sq_index)
+		Sq_candidates_index = [ind for ind, sq in enumerate(neighbors) if (abs(sq.angle - Si.angle) < angle_threshold) \
+		                       and (abs(angle_iq_neighbors[ind] - Si.angle) < angle_threshold) \
+		                       and (g.degree(neighbors_index[ind]) < 3)]
+		Sq_candidates = [neighbors_index[ind] for ind in Sq_candidates_index]
 
-	segments = sorted(nx.strongly_connected_components(g), key=len, reverse=True)
-	print 'NB edges:', len(g.edges()), g.edges()
+		if len(Sq_candidates_index) > 0:
+			scores = np.array(
+					[magnitude_v_neighbors[ind] * abs(angle_iq_neighbors[ind] - Si.angle) * abs(Si.angle - neighbors[ind].angle) \
+					 for ind in Sq_candidates_index])
+			#scores = np.array(
+			#		[magnitude_v_neighbors[ind] for ind in Sq_candidates_index])
+			Sq_index = Sq_candidates[np.argmin(scores)]
+			g.add_edge(i, Sq_index)
 
-	for s in g.edges():
-		print s
+	#segments = sorted(nx.weakly_connected_components(g), key=len, reverse=True)
+	paths = get_paths(g)
+	print 'NB edges:', len(g.edges()), 'NB segments:', len(paths)
 
-	geojson = segments_to_geojson(g.edges(), g)
+
+	geojson = segments_to_geojson(paths, g)
 	json.dump(geojson, open('data/gps_data/gps_segments_07-11.geojson', 'w'))
 
 if __name__ == "__main__":
