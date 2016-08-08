@@ -21,6 +21,7 @@ class GpsPoint:
 			self.lon = float(data[7])
 			self.lat = float(data[8])
 			self.angle = float(data[9])
+			self.ptid = data[2]
 
 	def get_coordinates(self):
 		"""
@@ -31,20 +32,21 @@ class GpsPoint:
 
 	def __str__(self):
 		return "bt_id:%s, speed:%s, timestamp:%s, lon:%s, lat:%s, angle:%s" % \
-		       (self.btid, self.speed, self.timestamp, self.lon, self.lat, self.angle)
+			   (self.btid, self.speed, self.timestamp, self.lon, self.lat, self.angle)
 
 	def __repr__(self):
 		return "bt_id:%s, speed:%s, timestamp:%s, lon:%s, lat:%s, angle:%s" % \
-		       (self.btid, self.speed, self.timestamp, self.lon, self.lat, self.angle)
+			   (self.btid, self.speed, self.timestamp, self.lon, self.lat, self.angle)
 
 
 class SamplePoint:
-	def __init__(self, speed=None, lon=None, lat=None, angle=None, weight=None):
+	def __init__(self, spid=None, speed=None, lon=None, lat=None, angle=None, weight=None):
 		self.speed = speed
 		self.lon = lon
 		self.lat = lat
 		self.angle = angle
 		self.weight = weight
+		self.spid = spid
 
 	def get_coordinates(self):
 		"""
@@ -55,11 +57,11 @@ class SamplePoint:
 
 	def __str__(self):
 		return "weight:%s, speed:%s, lon:%s, lat:%s, angle:%s" % \
-		       (self.weight, self.speed, self.lon, self.lat, self.angle)
+			   (self.weight, self.speed, self.lon, self.lat, self.angle)
 
 	def __repr__(self):
 		return "weight:%s, speed:%s, lon:%s, lat:%s, angle:%s" % \
-		       (self.weight, self.speed, self.lon, self.lat, self.angle)
+			   (self.weight, self.speed, self.lon, self.lat, self.angle)
 
 
 class line:
@@ -90,12 +92,12 @@ class line:
 
 def project_point_into_line(pt, parallel_line, perpendicular_line):
 	"""
-    This functions finds the projected point (ppt) of a point (pt) on a line (line). It computed the intersection
-    between line at the perpondecular line to it that goes through pt. 
-    :param pt: point (x, y)
-    :param line: line defined with (intercept, slope)
-    :returns: intersection point (x, y)
-    """
+	This functions finds the projected point (ppt) of a point (pt) on a line (line). It computed the intersection
+	between line at the perpondecular line to it that goes through pt.
+	:param pt: point (x, y)
+	:param line: line defined with (intercept, slope)
+	:returns: intersection point (x, y)
+	"""
 
 	if perpendicular_line.slope == float('Inf'):
 		# special case: projecting on a vertical line, y=point's y, x=intercept that has special meaning here.
@@ -113,10 +115,10 @@ def project_point_into_line(pt, parallel_line, perpendicular_line):
 
 def line_of_gps_point(pt, angle):
 	"""
-    Generate the line of a gps point
-    :return: line object
-    
-    """
+	Generate the line of a gps point
+	:return: line object
+
+	"""
 	b = tan(radians(90 - angle))
 	a = pt[1] - b * pt[0]
 	return line(intercept=a, slope=b)
@@ -213,8 +215,8 @@ def _to_samplepoints(geojson):
 	for s in geojson['features']:
 		if s['geometry']['coordinates'][0] == 0 or s['geometry']['coordinates'][1] == 0: continue
 		samples.append(SamplePoint(speed=s['properties']['speed'], angle=s['properties']['angle'],
-		                           weight=s['properties']['weight'], lon=s['geometry']['coordinates'][0],
-		                           lat=s['geometry']['coordinates'][1]))
+								   weight=s['properties']['weight'], lon=s['geometry']['coordinates'][0],
+								   lat=s['geometry']['coordinates'][1]))
 	return samples
 
 
@@ -231,10 +233,61 @@ def retrieve_neighbors(in_pt, points_tree, radius=0.005):
 	return neighbors
 
 
+def heading_vector_re_north(s, d):
+	"""
+	WRONG, doesn't account for the actual direction of the vector.!!!
+	compute the vector angle from the north (north = 0 degree)
+	:param s: source point
+	:param d: destination point
+	:return: angle in degrees from the north
+	"""
+	num = d.lat - s.lat
+	den = d.lon - s.lon
+	if den == 0 and num > 0:
+		angle = 90
+	elif den == 0 and num < 0:
+		angle = -90
+	else:
+		angle = degrees(atan(num / den))
+	return -1 * angle + 90
+
+def vector_direction_re_north(s, d):
+	"""
+	Make the source as the reference of the plan. Then compute atan2 of the resulting destination point
+	:param s: source point
+	:param d: destination point
+	:return: angle!
+	"""
+
+	# find the new coordinates of the destination point in a plan originated at source.
+	new_d_lon = d.lon - s.lon
+	new_d_lat = d.lat - s.lat
+	 # angle = -angle + 90 is used to change the angle reference from east to north.
+	angle = -degrees(atan2(new_d_lat, new_d_lon)) + 90
+
+	# the following is required to move the degrees from -180, 180 to 0, 360
+	if angle < 0:
+		angle = angle + 360
+	return angle
+
+
+def get_paths(g):
+	edges = {s:d for s,d in g.edges()}
+	sources = [s for s in edges.keys() if g.in_degree(s) == 0]
+	paths = []
+	for source in sources:
+		path = [source]
+		s = source
+		while (s in edges.keys()):
+			path.append(edges[s])
+			s = edges[s]
+		paths.append(path)
+	return paths
+
 def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 	if len(neighbors) < 2:
 		return SamplePoint(lon=rand_pt.lon, lat=rand_pt.lat, speed=rand_pt.speed, angle=rand_pt.angle,
-		                   weight=len(neighbors))
+						   weight=len(neighbors))
 
 	in_pt = rand_pt.get_coordinates()
 	angle = rand_pt.angle
@@ -271,7 +324,7 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 	# figure out number of bins: this is based on the width of road lanes!
 	LANE_WIDTH = 3.3  # lane width in meters
 	segment_length = max([haversine(neighbors[i].get_coordinates(), neighbors[j].get_coordinates()) \
-	                      for i in range(len(neighbors)) for j in range(i + 1, len(neighbors))])
+						  for i in range(len(neighbors)) for j in range(i + 1, len(neighbors))])
 	nb_bins = int(ceil(segment_length / LANE_WIDTH))
 	# Handle the case where nb_bins = 0 / this happens if all points are superposed (collision)
 	if nb_bins == 0:
@@ -332,108 +385,75 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 	return SamplePoint(lon=Sx, lat=Sy, speed=rand_pt.speed, angle=rand_pt.angle, weight=len(neighbors))
 
 
-def traj_meanshift_sampling():
-	INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
-	RADIUS = 0.0002
-	ANGLE_TOLERANCE = 60  # the tolerance of angle to consider two points are being heading toward the same overall direction
+# ---------------------------------------------------------------------------------------------
+# ----------------------------TRAJECTORY MEAN-SHIFT SAMPLING------------------------------------
+# ---------------------------------------------------------------------------------------------
+
+def traj_meanshift_sampling(INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv', RADIUS_METER = 20, HEADING_ANGLE_TOLERANCE = 60):
+	"""
+	Generate samples from raw GPS data.
+	:param INPUT_FILE_NAME: tab separated file as generated from QMIC data
+	:param RADIUS_METER: threshold distance between points and their center (sample) in meters.
+	:param HEADING_ANGLE_TOLERANCE: threshold angle for points assumed to be heading in the same direction.
+	:return: mapping point to sample!
+	"""
+	RADIUS_DEGREE = RADIUS_METER * 10e-6
+	gpspoint_to_samples = dict()
 	data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
-	Npoints = len(data_points)
 	print 'nb points:', len(data_points), 'points example:', data_points[0], raw_points[0]
 
 	samples = list()
 	removed_points = set()
 	available_point_indexes = np.arange(0, len(data_points))
+	spid_cnt = 1
 	while len(available_point_indexes) > 0:
 		print 'THERE ARE %s points, removed %s points' % (len(available_point_indexes), len(removed_points))
 		rand_index = random.sample(available_point_indexes, 1)[0]
 		rand_pt = data_points[rand_index]
-
 		# Find all neighbors in the given radius: RADIUS
 		neighbor_indexes = [rand_index] + retrieve_neighbors(in_pt=rand_pt.get_coordinates(), points_tree=points_tree,
-		                                                     radius=RADIUS)
+		                                                     radius=RADIUS_DEGREE)
 		remaining_neighbor_indexes = list(set(neighbor_indexes) - removed_points)
 		neighbor_indexes = []
 		neighbors = []
+		# find neighbors that are within a certain angle. This will eliminate points from the opposite direction.
 		for val in remaining_neighbor_indexes:
-			if abs(data_points[val].angle - rand_pt.angle) <= ANGLE_TOLERANCE:
+			if abs(data_points[val].angle - rand_pt.angle) <= HEADING_ANGLE_TOLERANCE:
 				neighbors.append(data_points[val])
 				neighbor_indexes.append(val)
-
-		# neighbors = data_points[remaining_neighbor_indexes]
-		# Only consider neighbors that are supposed to be in the same heading direction.
-		# neighbors = [nei for nei in data_points[remaining_neighbor_indexes] if abs(nei.angle - rand_pt.angle) <= ANGLE_TOLERANCE]
-
 		# call find center method
 		sample_pt = find_sample(rand_pt=rand_pt, neighbors=neighbors, draw_output=False)
+		sample_pt.spid = spid_cnt
 		samples.append(sample_pt)
-
+		for nei in neighbors:
+			gpspoint_to_samples[nei.ptid] = spid_cnt
+		spid_cnt += 1
 		# Remove elements
 		removed_points = removed_points.union(neighbor_indexes)
 		available_point_indexes = sorted(set(available_point_indexes) - removed_points)
 
+
 	print 'NB SAMPLES: %s' % len(samples)
-	samples_geojson = _to_geojson(samples)
-	json.dump(samples_geojson, open('data/gps_data/gps_samples_07-11.geojson', 'w'))
+	# store results into a file
+	json.dump(_to_geojson(samples), open('data/gps_data/gps_samples_07-11_r%s_a%s.geojson' % (
+		RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
+	json.dump(gpspoint_to_samples, open('data/gps_data/gps_points_to_samples_r%s_a%s.json' % (
+		RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
+	#return gpspoint_to_samples
 
-	for s in samples:
-		if s.lon > 50:
-			plt.scatter(s.lon, s.lat)
-
-	# Get x/y-axis in the same aspect
-	plt.gca().set_aspect('equal', adjustable='box')
-	plt.show()
-
-
-def heading_vector_re_north(s, d):
-	"""
-	WRONG, doesn't account for the actual direction of the vector.!!!
-	compute the vector angle from the north (north = 0 degree)
-	:param s: source point
-	:param d: destination point
-	:return: angle in degrees from the north
-	"""
-	num = d.lat - s.lat
-	den = d.lon - s.lon
-	if den == 0 and num > 0:
-		angle = 90
-	elif den == 0 and num < 0:
-		angle = -90
-	else:
-		angle = degrees(atan(num / den))
-	return -1 * angle + 90
-
-def vector_direction_re_north(s, d):
-	"""
-	Make the source as the reference of the plan. Then compute atan2 of the resulting destination point
-	:param s: source point
-	:param d: destination point
-	:return: angle!
-	"""
-
-	# find the new coordinates of the destination point in a plan originated at source.
-	new_d_lon = d.lon - s.lon
-	new_d_lat = d.lat - s.lat
-	 # angle = -angle + 90 is used to change the angle reference from east to north.
-	angle = -degrees(atan2(new_d_lat, new_d_lon)) + 90
-
-	# the following is required to move the degrees from -180, 180 to 0, 360
-	if angle < 0:
-		angle = angle + 360
-	return angle
+	# # Plot results.
+	# for s in samples:
+	# 	if s.lon > 50:
+	# 		plt.scatter(s.lon, s.lat)
+	# # Get x/y-axis in the same aspect
+	# plt.gca().set_aspect('equal', adjustable='box')
+	# plt.show()
 
 
-def get_paths(g):
-	edges = {s:d for s,d in g.edges()}
-	sources = [s for s in edges.keys() if g.in_degree(s) == 0]
-	paths = []
-	for source in sources:
-		path = [source]
-		s = source
-		while (s in edges.keys()):
-			path.append(edges[s])
-			s = edges[s]
-		paths.append(path)
-	return paths
+
+# ---------------------------------------------------------------------------------------------
+# ----------------------------ROAD SEGMENT CLUSTERING------------------------------------------
+# ---------------------------------------------------------------------------------------------
 
 def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_threshold=30):
 	"""
@@ -468,7 +488,7 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 			continue
 
 		neighbors_index = [ind for ind in retrieve_neighbors(simple_samples[i], samples_tree, radius=dist_threshold)\
-		             if samples[ind].lon != Si.lon or samples[ind].lat != Si.lat]
+					 if samples[ind].lon != Si.lon or samples[ind].lat != Si.lat]
 		neighbors = [samples[ind] for ind in neighbors_index]
 
 		angle_pi_neighbors = []
@@ -484,8 +504,8 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 		print 'Angle pi_nei:', angle_pi_neighbors
 		# Find Sp
 		Sp_candidates_index = [ind for ind, sp in enumerate(neighbors) if (abs(sp.angle - Si.angle) < angle_threshold) \
-		                       and (abs(angle_pi_neighbors[ind] - Si.angle) < angle_threshold) \
-		                       and (g.degree(neighbors_index[ind]) < 3)]
+							   and (abs(angle_pi_neighbors[ind] - Si.angle) < angle_threshold) \
+							   and (g.degree(neighbors_index[ind]) < 3)]
 		Sp_candidates = [neighbors_index[ind] for ind in Sp_candidates_index]
 
 		if len(Sp_candidates_index) > 0:
@@ -499,8 +519,8 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 
 		# Find Sq
 		Sq_candidates_index = [ind for ind, sq in enumerate(neighbors) if (abs(sq.angle - Si.angle) < angle_threshold) \
-		                       and (abs(angle_iq_neighbors[ind] - Si.angle) < angle_threshold) \
-		                       and (g.degree(neighbors_index[ind]) < 3)]
+							   and (abs(angle_iq_neighbors[ind] - Si.angle) < angle_threshold) \
+							   and (g.degree(neighbors_index[ind]) < 3)]
 		Sq_candidates = [neighbors_index[ind] for ind in Sq_candidates_index]
 
 		if len(Sq_candidates_index) > 0:
@@ -518,14 +538,15 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 
 
 	geojson = segments_to_geojson(paths, g)
-	json.dump(geojson, open('data/gps_data/gps_segments_07-11.geojson', 'w'))
+	json.dump(geojson, open('data/gps_data/gps_segments_07-11_r%s_a%s.geojson'  % (
+		RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
 
 if __name__ == "__main__":
 	# 1. find samples
-	#traj_meanshift_sampling()
+	traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', RADIUS_METER=50, HEADING_ANGLE_TOLERANCE=60)
 
 	# 2. find segments
-	road_segment_clustering(minL=100, dist_threshold=0.0009, angle_threshold=30)
+	# road_segment_clustering(minL=100, dist_threshold=0.0009, angle_threshold=30)
 
 
 
