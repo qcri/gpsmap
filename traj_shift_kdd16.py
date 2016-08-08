@@ -514,9 +514,6 @@ if __name__ == "__main__":
 
 
 
-
-
-
 # INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
 # RADIUS = 0.0001
 # data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
