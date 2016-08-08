@@ -1,3 +1,4 @@
+from collections import defaultdict, Counter
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,285 +9,11 @@ import random
 import json
 import operator
 import networkx as nx
+from common import *
 
-BIN_SEGMENT_LENGTH = 2  # length of bins in meters
-
-
-class GpsPoint:
-	def __init__(self, data=None):
-		if data is not None:
-			self.btid = data[4]
-			self.speed = float(data[5])
-			self.timestamp = datetime.datetime.strptime(data[6], '%Y-%m-%d %H:%M:%S+03')
-			self.lon = float(data[7])
-			self.lat = float(data[8])
-			self.angle = float(data[9])
-			self.ptid = data[2]
-
-	def get_coordinates(self):
-		"""
-		return the lon,lat of a gps point
-		:return: tuple (lon, lat)
-		"""
-		return (self.lon, self.lat)
-
-	def __str__(self):
-		return "bt_id:%s, speed:%s, timestamp:%s, lon:%s, lat:%s, angle:%s" % \
-			   (self.btid, self.speed, self.timestamp, self.lon, self.lat, self.angle)
-
-	def __repr__(self):
-		return "bt_id:%s, speed:%s, timestamp:%s, lon:%s, lat:%s, angle:%s" % \
-			   (self.btid, self.speed, self.timestamp, self.lon, self.lat, self.angle)
-
-
-class SamplePoint:
-	def __init__(self, spid=None, speed=None, lon=None, lat=None, angle=None, weight=None):
-		self.speed = speed
-		self.lon = lon
-		self.lat = lat
-		self.angle = angle
-		self.weight = weight
-		self.spid = spid
-
-	def get_coordinates(self):
-		"""
-		return the lon,lat of a gps point
-		:return: tuple (lon, lat)
-		"""
-		return (self.lon, self.lat)
-
-	def __str__(self):
-		return "weight:%s, speed:%s, lon:%s, lat:%s, angle:%s" % \
-			   (self.weight, self.speed, self.lon, self.lat, self.angle)
-
-	def __repr__(self):
-		return "weight:%s, speed:%s, lon:%s, lat:%s, angle:%s" % \
-			   (self.weight, self.speed, self.lon, self.lat, self.angle)
-
-
-class line:
-	def __init__(self, slope=None, intercept=None):
-		self.slope = slope if slope is not None else None
-		self.intercept = intercept if intercept is not None else None
-
-	def perpendecular(self, at_pt=None):
-		if self.slope == 0:
-			# if slope is 0 (horizontal line), the perpendicular is special: x=pt[0].
-			# Thus, I'm givin a special interpretation to slope and intercept here to capture this case.
-			# TODO: find a better solution to handle this case.
-			return line(slope=float('Inf'), intercept=at_pt[0])
-		slope = -1 / self.slope
-		intercept = at_pt[1] - slope * at_pt[0] if at_pt is not None else 0
-		return line(slope=slope, intercept=intercept)
-
-	def plot(self, color=None, width=2, pt=None):
-		x = np.array([-0.00002, -0.0001, 0, 0.00001, 0.00002]) + pt[0]
-		if color is not None:
-			plt.plot(x, self.intercept + self.slope * x, linewidth=width, color=color)
-		else:
-			plt.plot(x, self.intercept + self.slope * x, linewidth=width)
-
-	def __repr__(self):
-		return 'y = %sx + %s' % (self.slope, self.intercept)
-
-
-def project_point_into_line(pt, parallel_line, perpendicular_line):
-	"""
-	This functions finds the projected point (ppt) of a point (pt) on a line (line). It computed the intersection
-	between line at the perpondecular line to it that goes through pt.
-	:param pt: point (x, y)
-	:param line: line defined with (intercept, slope)
-	:returns: intersection point (x, y)
-	"""
-
-	if perpendicular_line.slope == float('Inf'):
-		# special case: projecting on a vertical line, y=point's y, x=intercept that has special meaning here.
-		return (perpendicular_line.intercept, pt[1])
-	# 1. find the line that is parallel to parallel line that goes thu pt.
-	intercept = pt[1] - parallel_line.slope * pt[0]
-	# line(parallel_line.slope, intercept).plot(color='green', width=1)
-
-	# 2. find intersection point between pt_line and perpendicular_line
-	X = np.array([[1, - parallel_line.slope], [1, -perpendicular_line.slope]])
-	Y = np.array([intercept, perpendicular_line.intercept])
-	yx = np.linalg.solve(X, Y)
-	return (yx[1], yx[0])
-
-
-def line_of_gps_point(pt, angle):
-	"""
-	Generate the line of a gps point
-	:return: line object
-
-	"""
-	b = tan(radians(90 - angle))
-	a = pt[1] - b * pt[0]
-	return line(intercept=a, slope=b)
-
-
-def distance_heading_speed(pt1, pt2, sigma_h=0.5, sigma_s=0.5):
-	delta_s = exp(-(pt1.speed - pt2.speed) ** 2 / sigma_s)
-	delta_h = exp(-(pt1.angle - pt2.angle) ** 2 / sigma_h)
-	return delta_s * delta_h
-
-
-def haversine(pt1, pt2):
-	"""
-	Calculate the great circle distance between two points
-	on the earth (specified in decimal degrees)
-	Sofiane: got it from:http://stackoverflow.com/questions/15736995/how-can-i-quickly-estimate-the-distance-between-two-latitude-longitude-points
-	:param pt1: point (lon, lat)
-	:param pt2: point (lon, lat)
-	:return: the distance in meters
-	"""
-
-	lon1 = pt1[0]
-	lat1 = pt1[1]
-	lon2 = pt2[0]
-	lat2 = pt2[1]
-
-	# convert decimal degrees to radians
-	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-
-	# haversine formula
-	dlon = lon2 - lon1
-	dlat = lat2 - lat1
-	a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-	c = 2 * asin(sqrt(a))
-	km = 6367 * c
-	return km * 1000
-
-
-def load_data(fname='data/gps_data/gps_points.csv'):
-	"""
-	Given a file that contains gps points, this method creates different data structures
-	:param fname: the name of the input file, as generated by QMIC
-	:return: data_points (list of gps positions with their metadata), raw_points (coordinates only),
-	points_tree is the KDTree structure to enable searching the points space
-	"""
-	data_points = list()
-	raw_points = list()
-
-	with open(fname, 'r') as f:
-		f.readline()
-		for line in f:
-			tup = line.strip().split('\t')
-			pt = GpsPoint(tup)
-			data_points.append(pt)
-			raw_points.append(pt.get_coordinates())
-	points_tree = cKDTree(raw_points)
-	return np.array(data_points), np.array(raw_points), points_tree
-
-
-def _to_geojson(samples):
-	"""
-	Generate the geojson object of a list of sample points
-	:param samples: list of samples
-	:return: one geojson object that contains all the points.
-	"""
-	geojson = {'type': 'FeatureCollection', 'features': []}
-	for s in samples:
-		feature = {'type': 'Feature', 'properties': {}, 'geometry': {'type': 'Point', 'coordinates': []}}
-		feature['geometry']['coordinates'] = [s.lon, s.lat]
-		feature['properties']['speed'] = s.speed
-		feature['properties']['weight'] = s.weight
-		feature['properties']['angle'] = s.angle
-		geojson['features'].append(feature)
-	return geojson
-
-
-def segments_to_geojson(segments, g):
-	"""
-	Generate the geojson object of a list of segments
-	:param samples: list of samples
-	:return: one geojson object that contains all the points.
-	"""
-	geojson = {'type': 'FeatureCollection', 'features': []}
-	for s in segments:
-		feature = {'type': 'Feature', 'properties': {}, 'geometry': {'type': 'LineString', 'coordinates': []}}
-		coordinates = [[g.node[p]['lon'], g.node[p]['lat']] for p in list(s)]
-		feature['geometry']['coordinates'] = coordinates
-		geojson['features'].append(feature)
-	return geojson
-
-
-def _to_samplepoints(geojson):
-	samples = []
-	for s in geojson['features']:
-		if s['geometry']['coordinates'][0] == 0 or s['geometry']['coordinates'][1] == 0: continue
-		samples.append(SamplePoint(speed=s['properties']['speed'], angle=s['properties']['angle'],
-								   weight=s['properties']['weight'], lon=s['geometry']['coordinates'][0],
-								   lat=s['geometry']['coordinates'][1]))
-	return samples
-
-
-def retrieve_neighbors(in_pt, points_tree, radius=0.005):
-	"""
-	Retrieve all points within a radius to an input point in_pt
-	:param in_pt: intput point
-	:param points_tree: KDTree of points, needs to be precomputed
-	:param radius: distance radius
-	:return: list of indexes of neighbors.
-	"""
-
-	neighbors = points_tree.query_ball_point(x=in_pt, r=radius, p=2)
-	return neighbors
-
-
-def heading_vector_re_north(s, d):
-	"""
-	WRONG, doesn't account for the actual direction of the vector.!!!
-	compute the vector angle from the north (north = 0 degree)
-	:param s: source point
-	:param d: destination point
-	:return: angle in degrees from the north
-	"""
-	num = d.lat - s.lat
-	den = d.lon - s.lon
-	if den == 0 and num > 0:
-		angle = 90
-	elif den == 0 and num < 0:
-		angle = -90
-	else:
-		angle = degrees(atan(num / den))
-	return -1 * angle + 90
-
-def vector_direction_re_north(s, d):
-	"""
-	Make the source as the reference of the plan. Then compute atan2 of the resulting destination point
-	:param s: source point
-	:param d: destination point
-	:return: angle!
-	"""
-
-	# find the new coordinates of the destination point in a plan originated at source.
-	new_d_lon = d.lon - s.lon
-	new_d_lat = d.lat - s.lat
-	 # angle = -angle + 90 is used to change the angle reference from east to north.
-	angle = -degrees(atan2(new_d_lat, new_d_lon)) + 90
-
-	# the following is required to move the degrees from -180, 180 to 0, 360
-	if angle < 0:
-		angle = angle + 360
-	return angle
-
-
-def get_paths(g):
-	edges = {s:d for s,d in g.edges()}
-	sources = [s for s in edges.keys() if g.in_degree(s) == 0]
-	paths = []
-	for source in sources:
-		path = [source]
-		s = source
-		while (s in edges.keys()):
-			path.append(edges[s])
-			s = edges[s]
-		paths.append(path)
-	return paths
-
-def find_sample(rand_pt=None, neighbors=None, draw_output=False):
+def find_sample(spid=None, rand_pt=None, neighbors=None, draw_output=False):
 	if len(neighbors) < 2:
-		return SamplePoint(lon=rand_pt.lon, lat=rand_pt.lat, speed=rand_pt.speed, angle=rand_pt.angle,
+		return SamplePoint(spid=spid, lon=rand_pt.lon, lat=rand_pt.lat, speed=rand_pt.speed, angle=rand_pt.angle,
 						   weight=len(neighbors))
 
 	in_pt = rand_pt.get_coordinates()
@@ -359,7 +86,7 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 	if draw_output == False:
 		avg_speed = sum([nei.speed for nei in neighbors]) / len(neighbors)
 		avg_heading = sum([nei.angle for nei in neighbors]) / len(neighbors)
-		return SamplePoint(lon=Sx, lat=Sy, speed=avg_speed, angle=avg_heading, weight=len(neighbors))
+		return SamplePoint(spid=spid, lon=Sx, lat=Sy, speed=avg_speed, angle=avg_heading, weight=len(neighbors))
 
 	# ---------------------
 	# plotting the results |
@@ -386,7 +113,7 @@ def find_sample(rand_pt=None, neighbors=None, draw_output=False):
 
 
 # ---------------------------------------------------------------------------------------------
-# ----------------------------TRAJECTORY MEAN-SHIFT SAMPLING------------------------------------
+# ----------------------------TRAJECTORY MEAN-SHIFT SAMPLING-----------------------------------
 # ---------------------------------------------------------------------------------------------
 
 def traj_meanshift_sampling(INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv', RADIUS_METER = 20, HEADING_ANGLE_TOLERANCE = 60):
@@ -422,8 +149,7 @@ def traj_meanshift_sampling(INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.cs
 				neighbors.append(data_points[val])
 				neighbor_indexes.append(val)
 		# call find center method
-		sample_pt = find_sample(rand_pt=rand_pt, neighbors=neighbors, draw_output=False)
-		sample_pt.spid = spid_cnt
+		sample_pt = find_sample(spid=spid_cnt, rand_pt=rand_pt, neighbors=neighbors, draw_output=False)
 		samples.append(sample_pt)
 		for nei in neighbors:
 			gpspoint_to_samples[nei.ptid] = spid_cnt
@@ -435,7 +161,7 @@ def traj_meanshift_sampling(INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.cs
 
 	print 'NB SAMPLES: %s' % len(samples)
 	# store results into a file
-	json.dump(_to_geojson(samples), open('data/gps_data/gps_samples_07-11_r%s_a%s.geojson' % (
+	json.dump(to_geojson(samples), open('data/gps_data/gps_samples_07-11_r%s_a%s.geojson' % (
 		RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
 	json.dump(gpspoint_to_samples, open('data/gps_data/gps_points_to_samples_r%s_a%s.json' % (
 		RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
@@ -450,24 +176,23 @@ def traj_meanshift_sampling(INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.cs
 	# plt.show()
 
 
-
 # ---------------------------------------------------------------------------------------------
 # ----------------------------ROAD SEGMENT CLUSTERING------------------------------------------
 # ---------------------------------------------------------------------------------------------
 
-def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_threshold=30):
+def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_threshold=30):
 	"""
 	Create a graph from the samples. Nodes are samples, edges are road segments.
 	:param samples:
 	:param minL:
-	:param dist_threshold:
+	:param dist_threshold_degree: distance threshold in meters
 	:param angle_threshold:
 	:return:
 	"""
-
+	dist_threshold_degree = dist_threshold * 10e-6
 	if samples is None:
-		data = json.load(open('data/gps_data/gps_samples_07-11.geojson'))
-		samples = _to_samplepoints(data)
+		data = json.load(open('data/gps_data/gps_samples_07-11_r50_a60.geojson'))
+		samples, sample_dict = to_samplepoints(data)
 
 	print 'NB nodes:', len(samples)
 	# 1. Sort samples by weight, and create KD-Tree
@@ -479,7 +204,7 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 	# node_degree = {_:0 for _ in range(len(samples))} # dictionary of node: degree
 	g = nx.DiGraph()
 	for ind, s in enumerate(samples):
-		g.add_node(ind, speed=s.speed, angle=s.angle, lon=s.lon, lat=s.lat, weight=s.weight)
+		g.add_node(ind, id=s.spid, speed=s.speed, angle=s.angle, lon=s.lon, lat=s.lat, weight=s.weight)
 
 	for i, Si in enumerate(samples):
 		print i, 'processing: ', Si
@@ -487,7 +212,7 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 			print 'non treated'
 			continue
 
-		neighbors_index = [ind for ind in retrieve_neighbors(simple_samples[i], samples_tree, radius=dist_threshold)\
+		neighbors_index = [ind for ind in retrieve_neighbors(simple_samples[i], samples_tree, radius=dist_threshold_degree)\
 					 if samples[ind].lon != Si.lon or samples[ind].lat != Si.lat]
 		neighbors = [samples[ind] for ind in neighbors_index]
 
@@ -534,20 +259,78 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=0.001, angle_
 
 	#segments = sorted(nx.weakly_connected_components(g), key=len, reverse=True)
 	paths = get_paths(g)
-	print 'NB edges:', len(g.edges()), 'NB segments:', len(paths)
-
+	print 'NB edges:', len(g.edges()), 'NB segments:', len(paths), 'NB nodes:', len(g)
 
 	geojson = segments_to_geojson(paths, g)
-	json.dump(geojson, open('data/gps_data/gps_segments_07-11_r%s_a%s.geojson'  % (
-		RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
+	json.dump(geojson, open('data/gps_data/gps_segments_07-11_r%s_a%s.geojson' % (
+		dist_threshold, angle_threshold), 'w'))
+
+	# build mapping between samples and segments.
+	sample_to_segment = {g.node[p]['id']: segment_id for segment_id, path in enumerate(paths) for p in path}
+	json.dump(sample_to_segment, open('data/gps_data/gps_samples_to_segments.json', 'w'))
+
+# ---------------------------------------------------------------------------------------------
+# ----------------------------TRAJECTORY MEAN-SHIFT SAMPLING-----------------------------------
+# ---------------------------------------------------------------------------------------------
+
+def inferring_links_between_segments(samples=None, segments=None, points_to_samples=None, samples_to_segments=None):
+	"""
+	I assume that this is simply adding edges to the graph!
+	The idea is to take all trajectories, and process them one by one.
+	For each trajectory, create the missing links.
+	Inputs:
+	1. gps points should have ids.
+	2. sample points should have ids.
+	3. segments should have ids.
+	4. dict: gps_point to sample
+	5. dict: sample to segment.
+
+	:return:
+	"""
+	# read/generate trajectories. each trajectory is: [pt1, pt2, ... ptn]
+	trajectories = create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv')
+	# read the mappings points to samples:
+	if points_to_samples is None:
+		points_to_samples = {int(k):v for k,v in json.load(open('data/gps_data/gps_points_to_samples_r50_a60.json')).iteritems()}
+	# read the mappings samples to segments:
+	if samples_to_segments is None:
+		samples_to_segments = {int(k): v for k, v in json.load(open('data/gps_data/gps_samples_to_segments.json')).iteritems()}
+	# read samples and segments. Each segment is list of sample points: [s1, s2, ...sl]
+	if samples is None:
+		data = json.load(open('data/gps_data/gps_samples_07-11_r50_a60.geojson'))
+		samples, samples_dict = to_samplepoints(data)
+	if segments is None:
+		data = json.load(open('data/gps_data/gps_segments_07-11_r90_a40.geojson'))
+		segment_pt_coordinates, segments = to_segments(data)
+	print 'samples_numbers:', len(set(points_to_samples.values())), len(samples_to_segments.keys())
+
+	links = []
+	for traj in trajectories:
+		# the idea here is to assign each point to the closest sample point.
+		# 1. map gps points in trajectories into samples.
+		traj_samples = uniquify([points_to_samples[p.ptid] for p in traj])
+		print traj_samples
+		# 2. map samples into segments: we need to make sure segments are somehow ordered!
+		traj_segments = uniquify([samples_to_segments[s] for s in traj_samples])
+		# 3. create an edge between every successive segments: last node in s_i with first element in s_i+1
+		links += [(segments[traj_segments[i]][-1], segments[traj_segments[i + 1]][0]) for i in range(len(traj_segments) - 1)]
+
+	# get geojson of new links with their weight computed as their frequencies.
+	print 'LINKS:', links
+	geojson = links_to_geojson(links, samples_dict)
+	json.dump(geojson, open('data/gps_data/gps_segments_links_07-11.geojson', 'w'))
+
+
 
 if __name__ == "__main__":
 	# 1. find samples
-	traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', RADIUS_METER=50, HEADING_ANGLE_TOLERANCE=60)
+	# traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', RADIUS_METER=50, HEADING_ANGLE_TOLERANCE=60)
 
 	# 2. find segments
-	# road_segment_clustering(minL=100, dist_threshold=0.0009, angle_threshold=30)
+	# road_segment_clustering(minL=100, dist_threshold=90, angle_threshold=40)
 
+	# 3. Inferring links between segments
+	inferring_links_between_segments()
 
 
 # INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
