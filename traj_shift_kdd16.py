@@ -208,8 +208,7 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_thr
 
 	for i, Si in enumerate(samples):
 		print i, 'processing: ', Si
-		if g.degree(i) > 2:
-			print 'non treated'
+		if g.degree(i) >= 2:
 			continue
 
 		neighbors_index = [ind for ind in retrieve_neighbors(simple_samples[i], samples_tree, radius=dist_threshold_degree)\
@@ -226,7 +225,6 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_thr
 			magnitude_v_neighbors.append(sqrt(pow((Si.lon - nei.lon), 2) + pow((Si.lat - nei.lat), 2)))
 			haversine_v_neighbors.append(haversine((Si.lon, Si.lat), (nei.lon, nei.lat)))
 
-		print 'Angle pi_nei:', angle_pi_neighbors
 		# Find Sp
 		Sp_candidates_index = [ind for ind, sp in enumerate(neighbors) if (abs(sp.angle - Si.angle) < angle_threshold) \
 							   and (abs(angle_pi_neighbors[ind] - Si.angle) < angle_threshold) \
@@ -257,6 +255,11 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_thr
 			Sq_index = Sq_candidates[np.argmin(scores)]
 			g.add_edge(i, Sq_index)
 
+		# Account for cases where the sample point has no neighbor and belong to no segemets!
+		# TODO: check later if this reflexive link doesn't cause other problems
+		# if len(Sq_candidates_index) + len(Sp_candidates_index) == 0:
+		# 	g.add_edge(i, i)
+
 	#segments = sorted(nx.weakly_connected_components(g), key=len, reverse=True)
 	paths = get_paths(g)
 	print 'NB edges:', len(g.edges()), 'NB segments:', len(paths), 'NB nodes:', len(g)
@@ -270,7 +273,7 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_thr
 	json.dump(sample_to_segment, open('data/gps_data/gps_samples_to_segments.json', 'w'))
 
 # ---------------------------------------------------------------------------------------------
-# ----------------------------TRAJECTORY MEAN-SHIFT SAMPLING-----------------------------------
+# ----------------------------INFERRING LINKS BETWEEN SEGMENTS---------------------------------
 # ---------------------------------------------------------------------------------------------
 
 def inferring_links_between_segments(samples=None, segments=None, points_to_samples=None, samples_to_segments=None):
@@ -288,7 +291,7 @@ def inferring_links_between_segments(samples=None, segments=None, points_to_samp
 	:return:
 	"""
 	# read/generate trajectories. each trajectory is: [pt1, pt2, ... ptn]
-	trajectories = create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv')
+	trajectories = create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=20)
 	# read the mappings points to samples:
 	if points_to_samples is None:
 		points_to_samples = {int(k):v for k,v in json.load(open('data/gps_data/gps_points_to_samples_r50_a60.json')).iteritems()}
@@ -310,16 +313,14 @@ def inferring_links_between_segments(samples=None, segments=None, points_to_samp
 		# 1. map gps points in trajectories into samples.
 		traj_samples = uniquify([points_to_samples[p.ptid] for p in traj])
 		print traj_samples
-		# 2. map samples into segments: we need to make sure segments are somehow ordered!
-		traj_segments = uniquify([samples_to_segments[s] for s in traj_samples])
+		# 2. map samples into segments: in some cases some samples are missing from segments if they are not connected to other samples
+		traj_segments = uniquify([samples_to_segments[s] for s in traj_samples if s in samples_to_segments.keys()])
 		# 3. create an edge between every successive segments: last node in s_i with first element in s_i+1
 		links += [(segments[traj_segments[i]][-1], segments[traj_segments[i + 1]][0]) for i in range(len(traj_segments) - 1)]
 
 	# get geojson of new links with their weight computed as their frequencies.
-	print 'LINKS:', links
 	geojson = links_to_geojson(links, samples_dict)
 	json.dump(geojson, open('data/gps_data/gps_segments_links_07-11.geojson', 'w'))
-
 
 
 if __name__ == "__main__":

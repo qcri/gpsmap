@@ -269,9 +269,12 @@ def uniquify(seq):
 	:param seq: list of items
 	:return: unique values is seq, with order preserved!
 	"""
-	seen = set()
-	seen_add = seen.add
-	return [x for x in seq if not (x in seen or seen_add(x))]
+	if len(seq) < 2:
+		return seq
+	return [seq[0]] + [x for i, x in enumerate(seq[1:]) if x != seq[i]]
+	# seen = set()
+	# seen_add = seen.add
+	# return [x for x in seq if not (x in seen or seen_add(x))]
 
 
 def retrieve_neighbors(in_pt, points_tree, radius=0.005):
@@ -335,6 +338,7 @@ def get_paths(g):
 	sources = [s for s in edges.keys() if g.in_degree(s) == 0]
 	paths = []
 	for source in sources:
+		# handle the case of reflexive links
 		path = [source]
 		s = source
 		while (s in edges.keys()):
@@ -347,10 +351,11 @@ def get_paths(g):
 			paths.append([node])
 	return paths
 
-def create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=3600):
+def create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=20):
 	"""
 	return all trajectories.
 	The heuristic is simple. Consider each users sorted traces not broken by more than 1 hour as trajectories.
+	:param waiting_threshold: threshold for trajectory split expressed in seconds.
 	:return: list of lists of trajectories
 	"""
 
