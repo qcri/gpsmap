@@ -1,14 +1,3 @@
-from collections import defaultdict, Counter
-import matplotlib
-import numpy as np
-import matplotlib.pyplot as plt
-from math import tan, sin, cos, asin, radians, exp, sqrt, ceil, atan, atan2, pow, degrees
-from scipy.spatial import cKDTree
-import datetime
-import random
-import json
-import operator
-import networkx as nx
 from common import *
 
 def find_sample(spid=None, rand_pt=None, neighbors=None, draw_output=False):
@@ -121,7 +110,7 @@ def find_sample(spid=None, rand_pt=None, neighbors=None, draw_output=False):
 # ----------------------------TRAJECTORY MEAN-SHIFT SAMPLING-----------------------------------
 # ---------------------------------------------------------------------------------------------
 
-def traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', RADIUS_METER=25, HEADING_ANGLE_TOLERANCE=2.5):
+def traj_meanshift_sampling(INPUT_FILE_NAME=None, RADIUS_METER=25, HEADING_ANGLE_TOLERANCE=2.5):
 	"""
 	Generate samples from raw GPS data.
 	:param INPUT_FILE_NAME: tab separated file as generated from QMIC data
@@ -129,6 +118,7 @@ def traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv'
 	:param HEADING_ANGLE_TOLERANCE: threshold angle for points assumed to be heading in the same direction.
 	:return: mapping point to sample!
 	"""
+	OUTPUT_FILE_CODE = INPUT_FILE_NAME.split('/')[-1].split('.')[0]
 	RADIUS_DEGREE = RADIUS_METER * 10e-6
 	gpspoint_to_samples = dict()
 	data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
@@ -168,10 +158,16 @@ def traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv'
 
 	print 'NB SAMPLES: %s' % len(samples)
 	# store results into a file
-	json.dump(to_geojson(samples), open('data/gps_data/gps_samples_07-11_r%s_a%s.geojson' % (
-		RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
-	json.dump(gpspoint_to_samples, open('data/gps_data/gps_points_to_samples_r%s_a%s.json' % (
-		RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
+	print 'OUTPUTFILE ', OUTPUT_FILE_CODE
+	json.dump(to_geojson(samples), open('data/%s_samples.geojson' % (
+		OUTPUT_FILE_CODE), 'w'))
+	json.dump(gpspoint_to_samples, open('data/%s_mappings_point_to_sample.json' % (
+		OUTPUT_FILE_CODE), 'w'))
+
+	# json.dump(to_geojson(samples), open('data/%s_samples_r%s_a%s.geojson' % (
+	# 	OUTPUT_FILE_CODE, RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
+	# json.dump(gpspoint_to_samples, open('data/%s_mappings_point_to_sample_r%s_a%s.json' % (
+	# 	OUTPUT_FILE_CODE, RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
 	#return gpspoint_to_samples
 
 	# # Plot results.
@@ -187,7 +183,7 @@ def traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv'
 # ----------------------------ROAD SEGMENT CLUSTERING------------------------------------------
 # ---------------------------------------------------------------------------------------------
 
-def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_threshold=30):
+def road_segment_clustering(codefile=None, samples=None, minL=100, dist_threshold=50, angle_threshold=30):
 	"""
 	Create a graph from the samples. Nodes are samples, edges are road segments.
 	:param samples:
@@ -198,7 +194,7 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_thr
 	"""
 	dist_threshold_degree = dist_threshold * 10e-6
 	if samples is None:
-		data = json.load(open('data/gps_data/gps_samples_07-11_r25_a5.geojson'))
+		data = json.load(open('data/%s_samples.geojson' % (codefile)))
 		samples, sample_dict = to_samplepoints(data)
 
 	print 'NB nodes:', len(samples)
@@ -272,18 +268,17 @@ def road_segment_clustering(samples=None, minL=100, dist_threshold=50, angle_thr
 	print 'NB edges:', len(g.edges()), 'NB segments:', len(paths), 'NB nodes:', len(g)
 
 	geojson = segments_to_geojson(paths, g)
-	json.dump(geojson, open('data/gps_data/gps_segments_07-11_r%s_a%s.geojson' % (
-		dist_threshold, angle_threshold), 'w'))
+	json.dump(geojson, open('data/%s_segments.geojson' % (codefile), 'w'))
 
 	# build mapping between samples and segments.
 	sample_to_segment = {g.node[p]['id']: segment_id for segment_id, path in enumerate(paths) for p in path}
-	json.dump(sample_to_segment, open('data/gps_data/gps_samples_to_segments.json', 'w'))
+	json.dump(sample_to_segment, open('data/%s_mappings_sample_to_segment.json' % (codefile), 'w'))
 
 # ---------------------------------------------------------------------------------------------
 # ----------------------------INFERRING LINKS BETWEEN SEGMENTS---------------------------------
 # ---------------------------------------------------------------------------------------------
 
-def inferring_links_between_segments(samples=None, segments=None, points_to_samples=None, samples_to_segments=None,
+def inferring_links_between_segments(codefile=None, samples=None, segments=None, points_to_samples=None, samples_to_segments=None,
                                      max_link_length=50):
 	"""
 	I assume that this is simply adding edges to the graph!
@@ -299,20 +294,19 @@ def inferring_links_between_segments(samples=None, segments=None, points_to_samp
 	:return:
 	"""
 	# read/generate trajectories. each trajectory is: [pt1, pt2, ... ptn]
-	trajectories = create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=10)
-	trajectories = create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=5)
+	trajectories = create_trajectories(INPUT_FILE_NAME='data/%s.csv' %  codefile, waiting_threshold=5)
 	# read the mappings points to samples:
 	if points_to_samples is None:
-		points_to_samples = {int(k):v for k,v in json.load(open('data/gps_data/gps_points_to_samples_r25_a5.json')).iteritems()}
+		points_to_samples = {int(k):v for k,v in json.load(open('data/%s_mappings_point_to_sample.json' % codefile)).iteritems()}
 	# read the mappings samples to segments:
 	if samples_to_segments is None:
-		samples_to_segments = {int(k): v for k, v in json.load(open('data/gps_data/gps_samples_to_segments.json')).iteritems()}
+		samples_to_segments = {int(k): v for k, v in json.load(open('data/%s_mappings_sample_to_segment.json' % codefile)).iteritems()}
 	# read samples and segments. Each segment is list of sample points: [s1, s2, ...sl]
 	if samples is None:
-		data = json.load(open('data/gps_data/gps_samples_07-11_r25_a5.geojson'))
+		data = json.load(open('data/%s_samples.geojson' % codefile))
 		samples, samples_dict = to_samplepoints(data)
 	if segments is None:
-		data = json.load(open('data/gps_data/gps_segments_07-11_r25_a10.geojson'))
+		data = json.load(open('data/%s_segments.geojson' % codefile))
 		segment_pt_coordinates, segments = to_segments(data)
 	print 'samples_numbers:', len(set(points_to_samples.values())), len(samples_to_segments.keys())
 
@@ -330,7 +324,7 @@ def inferring_links_between_segments(samples=None, segments=None, points_to_samp
 
 	# get geojson of new links with their weight computed as their frequencies.
 	geojson = links_to_geojson(links, samples_dict, max_link_length)
-	json.dump(geojson, open('data/gps_data/gps_segments_links_07-11.geojson', 'w'))
+	json.dump(geojson, open('data/%s_links.geojson' % codefile, 'w'))
 
 
 if __name__ == "__main__":
@@ -338,38 +332,23 @@ if __name__ == "__main__":
 	# 0. Parameters:
 	# --------------
 	INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
-	RADIUS_METER = 50
-	HEADING_ANGLE_TOLERANCE = 60
+	INPUT_FILE_NAME = 'data/3328402_07-11_points.csv'
+	FILE_CODE = '3328402_07-11_points'
+	RADIUS_METER = 25
+	HEADING_ANGLE_TOLERANCE = 3
 
 	# ---------------
 	minL = 100
-	dist_threshold = 90
-	angle_threshold = 40
+	dist_threshold = 25
+	angle_threshold = 3
 
 	# -----------------
 	# 1. find samples
-	traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', RADIUS_METER=25, HEADING_ANGLE_TOLERANCE=5)
+	traj_meanshift_sampling(INPUT_FILE_NAME=INPUT_FILE_NAME, RADIUS_METER=RADIUS_METER,
+	                        HEADING_ANGLE_TOLERANCE=HEADING_ANGLE_TOLERANCE)
 
 	# 2. find segments
-	#road_segment_clustering(minL=100, dist_threshold=25, angle_threshold=10)
+	road_segment_clustering(codefile=FILE_CODE, minL=100, dist_threshold=dist_threshold, angle_threshold=angle_threshold)
 
 	# 3. Inferring links between segments
-	# inferring_links_between_segments(samples=None, segments=None, points_to_samples=None, samples_to_segments=None)
-
-
-# INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
-# RADIUS = 0.0001
-# data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
-# print 'nb points:',  len(data_points), 'points example:', data_points[0], raw_points[0]
-#
-# # input: point and angle:
-# rand_pt = random.sample(data_points, 1)[0]
-#
-# # Find all neighbors in the given radius radius
-# # neighbors = np.random.randint(10, size=(100, 2))
-# neighbor_indexes = retrieve_neighbors(in_pt=rand_pt.get_coordinates(), points_tree=points_tree, radius=RADIUS)
-# print 'pt:%s, angle:%s,  has %s neighbors' % (rand_pt.get_coordinates(), rand_pt.angle, len(neighbor_indexes))
-# neighbors = data_points[neighbor_indexes]
-#
-# # call find center method
-# sample_pt = find_center(rand_pt=rand_pt, neighbors=neighbors)
+	inferring_links_between_segments(codefile=FILE_CODE, samples=None, segments=None, points_to_samples=None, samples_to_segments=None)
