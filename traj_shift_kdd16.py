@@ -348,13 +348,13 @@ if __name__ == "__main__":
 
 	# -----------------
 	# 1. find samples
-	#traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', RADIUS_METER=25, HEADING_ANGLE_TOLERANCE=5)
+	traj_meanshift_sampling(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', RADIUS_METER=25, HEADING_ANGLE_TOLERANCE=5)
 
 	# 2. find segments
 	#road_segment_clustering(minL=100, dist_threshold=25, angle_threshold=10)
 
 	# 3. Inferring links between segments
-	inferring_links_between_segments(samples=None, segments=None, points_to_samples=None, samples_to_segments=None)
+	# inferring_links_between_segments(samples=None, segments=None, points_to_samples=None, samples_to_segments=None)
 
 
 # INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
