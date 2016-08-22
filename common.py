@@ -73,7 +73,7 @@ class line:
 	def perpendecular(self, at_pt=None):
 		if self.slope == 0:
 			# if slope is 0 (horizontal line), the perpendicular is special: x=pt[0].
-			# Thus, I'm givin a special interpretation to slope and intercept here to capture this case.
+			# Thus, I'm giving a special interpretation to slope and intercept here to capture this case.
 			# TODO: find a better solution to handle this case.
 			return line(slope=float('Inf'), intercept=at_pt[0])
 		slope = -1 / self.slope
@@ -213,7 +213,7 @@ def segments_to_geojson(segments, g):
 		geojson['features'].append(feature)
 	return geojson
 
-def links_to_geojson(links, samples):
+def links_to_geojson(links, samples, max_link_length):
 	"""
 	Generate the geojson object of a list of links between segments
 	:param samples: list of samples
@@ -225,6 +225,8 @@ def links_to_geojson(links, samples):
 	for link, w in link_cnt.most_common(len(link_cnt)):
 		feature = {'type': 'Feature', 'properties': {}, 'geometry': {'type': 'LineString', 'coordinates': []}}
 		coordinates = [[samples[link[0]].lon, samples[link[0]].lat], [samples[link[1]].lon, samples[link[1]].lat]]
+		if haversine(coordinates[0], coordinates[1]) > max_link_length:
+			continue
 		pt_ids = [samples[link[0]].spid, samples[link[1]].spid]
 		feature['geometry']['coordinates'] = coordinates
 		feature['properties'] = {'link_id': link_id, 'weight': w, 'pt_ids': pt_ids}
@@ -351,7 +353,32 @@ def get_paths(g):
 			paths.append([node])
 	return paths
 
-def create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=20):
+
+def get_paths_with_reflexive_links(g):
+	"""
+	Compute all paths + consider single nodes!
+	:param g:
+	:return:
+	"""
+	edges = {s: d for s, d in g.edges()}
+	sources = [s for s in edges.keys() if g.in_degree(s) == 0]
+	paths = []
+	for source in sources:
+		# handle the case of reflexive links
+		path = [source]
+		s = source
+		while (s in edges.keys()):
+			path.append(edges[s])
+			s = edges[s]
+		paths.append(path)
+	path_nodes = [n for path in paths for n in path]
+	for node in g.nodes():
+		if node not in path_nodes:
+			paths.append([node])
+	return paths
+
+
+def create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=5):
 	"""
 	return all trajectories.
 	The heuristic is simple. Consider each users sorted traces not broken by more than 1 hour as trajectories.
