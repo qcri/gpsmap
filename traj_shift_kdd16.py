@@ -110,7 +110,7 @@ def find_sample(spid=None, rand_pt=None, neighbors=None, draw_output=False):
 # ----------------------------TRAJECTORY MEAN-SHIFT SAMPLING-----------------------------------
 # ---------------------------------------------------------------------------------------------
 
-def traj_meanshift_sampling(INPUT_FILE_NAME=None, RADIUS_METER=25, HEADING_ANGLE_TOLERANCE=2.5):
+def traj_meanshift_sampling(filecode=None, RADIUS_METER=25, HEADING_ANGLE_TOLERANCE=2.5):
 	"""
 	Generate samples from raw GPS data.
 	:param INPUT_FILE_NAME: tab separated file as generated from QMIC data
@@ -118,10 +118,9 @@ def traj_meanshift_sampling(INPUT_FILE_NAME=None, RADIUS_METER=25, HEADING_ANGLE
 	:param HEADING_ANGLE_TOLERANCE: threshold angle for points assumed to be heading in the same direction.
 	:return: mapping point to sample!
 	"""
-	OUTPUT_FILE_CODE = INPUT_FILE_NAME.split('/')[-1].split('.')[0]
 	RADIUS_DEGREE = RADIUS_METER * 10e-6
 	gpspoint_to_samples = dict()
-	data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
+	data_points, raw_points, points_tree = load_data(fname='data/%s.csv' % filecode)
 	print 'nb points:', len(data_points), 'points example:', data_points[0], raw_points[0]
 
 	samples = list()
@@ -158,11 +157,10 @@ def traj_meanshift_sampling(INPUT_FILE_NAME=None, RADIUS_METER=25, HEADING_ANGLE
 
 	print 'NB SAMPLES: %s' % len(samples)
 	# store results into a file
-	print 'OUTPUTFILE ', OUTPUT_FILE_CODE
 	json.dump(to_geojson(samples), open('data/%s_samples.geojson' % (
-		OUTPUT_FILE_CODE), 'w'))
+		filecode), 'w'))
 	json.dump(gpspoint_to_samples, open('data/%s_mappings_point_to_sample.json' % (
-		OUTPUT_FILE_CODE), 'w'))
+		filecode), 'w'))
 
 	# json.dump(to_geojson(samples), open('data/%s_samples_r%s_a%s.geojson' % (
 	# 	OUTPUT_FILE_CODE, RADIUS_METER, HEADING_ANGLE_TOLERANCE), 'w'))
@@ -183,7 +181,7 @@ def traj_meanshift_sampling(INPUT_FILE_NAME=None, RADIUS_METER=25, HEADING_ANGLE
 # ----------------------------ROAD SEGMENT CLUSTERING------------------------------------------
 # ---------------------------------------------------------------------------------------------
 
-def road_segment_clustering(codefile=None, samples=None, minL=100, dist_threshold=50, angle_threshold=30):
+def road_segment_clustering(filecode=None, samples=None, minL=100, dist_threshold=50, angle_threshold=30):
 	"""
 	Create a graph from the samples. Nodes are samples, edges are road segments.
 	:param samples:
@@ -194,7 +192,7 @@ def road_segment_clustering(codefile=None, samples=None, minL=100, dist_threshol
 	"""
 	dist_threshold_degree = dist_threshold * 10e-6
 	if samples is None:
-		data = json.load(open('data/%s_samples.geojson' % (codefile)))
+		data = json.load(open('data/%s_samples.geojson' % (filecode)))
 		samples, sample_dict = to_samplepoints(data)
 
 	print 'NB nodes:', len(samples)
@@ -268,18 +266,18 @@ def road_segment_clustering(codefile=None, samples=None, minL=100, dist_threshol
 	print 'NB edges:', len(g.edges()), 'NB segments:', len(paths), 'NB nodes:', len(g)
 
 	geojson = segments_to_geojson(paths, g)
-	json.dump(geojson, open('data/%s_segments.geojson' % (codefile), 'w'))
+	json.dump(geojson, open('data/%s_segments.geojson' % (filecode), 'w'))
 
 	# build mapping between samples and segments.
 	sample_to_segment = {g.node[p]['id']: segment_id for segment_id, path in enumerate(paths) for p in path}
-	json.dump(sample_to_segment, open('data/%s_mappings_sample_to_segment.json' % (codefile), 'w'))
+	json.dump(sample_to_segment, open('data/%s_mappings_sample_to_segment.json' % (filecode), 'w'))
 
 # ---------------------------------------------------------------------------------------------
 # ----------------------------INFERRING LINKS BETWEEN SEGMENTS---------------------------------
 # ---------------------------------------------------------------------------------------------
 
-def inferring_links_between_segments(codefile=None, samples=None, segments=None, points_to_samples=None, samples_to_segments=None,
-                                     max_link_length=50):
+def inferring_links_between_segments(filecode=None, samples=None, segments=None, points_to_samples=None, samples_to_segments=None,
+                                     max_link_length=100):
 	"""
 	I assume that this is simply adding edges to the graph!
 	The idea is to take all trajectories, and process them one by one.
@@ -294,19 +292,19 @@ def inferring_links_between_segments(codefile=None, samples=None, segments=None,
 	:return:
 	"""
 	# read/generate trajectories. each trajectory is: [pt1, pt2, ... ptn]
-	trajectories = create_trajectories(INPUT_FILE_NAME='data/%s.csv' %  codefile, waiting_threshold=5)
+	trajectories = create_trajectories(INPUT_FILE_NAME='data/%s.csv' % filecode, waiting_threshold=5)
 	# read the mappings points to samples:
 	if points_to_samples is None:
-		points_to_samples = {int(k):v for k,v in json.load(open('data/%s_mappings_point_to_sample.json' % codefile)).iteritems()}
+		points_to_samples = {int(k):v for k,v in json.load(open('data/%s_mappings_point_to_sample.json' % filecode)).iteritems()}
 	# read the mappings samples to segments:
 	if samples_to_segments is None:
-		samples_to_segments = {int(k): v for k, v in json.load(open('data/%s_mappings_sample_to_segment.json' % codefile)).iteritems()}
+		samples_to_segments = {int(k): v for k, v in json.load(open('data/%s_mappings_sample_to_segment.json' % filecode)).iteritems()}
 	# read samples and segments. Each segment is list of sample points: [s1, s2, ...sl]
 	if samples is None:
-		data = json.load(open('data/%s_samples.geojson' % codefile))
+		data = json.load(open('data/%s_samples.geojson' % filecode))
 		samples, samples_dict = to_samplepoints(data)
 	if segments is None:
-		data = json.load(open('data/%s_segments.geojson' % codefile))
+		data = json.load(open('data/%s_segments.geojson' % filecode))
 		segment_pt_coordinates, segments = to_segments(data)
 	print 'samples_numbers:', len(set(points_to_samples.values())), len(samples_to_segments.keys())
 
@@ -324,7 +322,7 @@ def inferring_links_between_segments(codefile=None, samples=None, segments=None,
 
 	# get geojson of new links with their weight computed as their frequencies.
 	geojson = links_to_geojson(links, samples_dict, max_link_length)
-	json.dump(geojson, open('data/%s_links.geojson' % codefile, 'w'))
+	json.dump(geojson, open('data/%s_links.geojson' % filecode, 'w'))
 
 
 if __name__ == "__main__":
@@ -339,16 +337,19 @@ if __name__ == "__main__":
 
 	# ---------------
 	minL = 100
-	dist_threshold = 25
-	angle_threshold = 3
+	dist_threshold = 200
+	angle_threshold = 30
 
+	# ---------------
+	max_link_length = 200
 	# -----------------
 	# 1. find samples
-	traj_meanshift_sampling(INPUT_FILE_NAME=INPUT_FILE_NAME, RADIUS_METER=RADIUS_METER,
+	traj_meanshift_sampling(filecode=FILE_CODE, RADIUS_METER=RADIUS_METER,
 	                        HEADING_ANGLE_TOLERANCE=HEADING_ANGLE_TOLERANCE)
 
 	# 2. find segments
-	road_segment_clustering(codefile=FILE_CODE, minL=100, dist_threshold=dist_threshold, angle_threshold=angle_threshold)
+	road_segment_clustering(filecode=FILE_CODE, minL=100, dist_threshold=dist_threshold, angle_threshold=angle_threshold)
 
 	# 3. Inferring links between segments
-	inferring_links_between_segments(codefile=FILE_CODE, samples=None, segments=None, points_to_samples=None, samples_to_segments=None)
+	inferring_links_between_segments(filecode=FILE_CODE, samples=None, segments=None, points_to_samples=None,
+	                                 samples_to_segments=None, max_link_length=max_link_length)
