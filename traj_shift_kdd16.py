@@ -239,7 +239,8 @@ def road_segment_clustering(filecode=None, samples=None, minL=100, dist_threshol
 			scores = np.array(
 				[magnitude_v_neighbors[ind] for ind in Sp_candidates_index])
 			Sp_index = Sp_candidates[np.argmin(scores)]
-			g.add_edge(Sp_index, i)
+			if g.degree(Sp_index) < 2:
+				g.add_edge(Sp_index, i)
 
 		# Find Sq
 		Sq_candidates_index = [ind for ind, sq in enumerate(neighbors) if (abs(sq.angle - Si.angle) < angle_threshold) \
@@ -254,7 +255,9 @@ def road_segment_clustering(filecode=None, samples=None, minL=100, dist_threshol
 			#scores = np.array(
 			#		[magnitude_v_neighbors[ind] for ind in Sq_candidates_index])
 			Sq_index = Sq_candidates[np.argmin(scores)]
-			g.add_edge(i, Sq_index)
+			if g.degree(Sq_index) < 2:
+				g.add_edge(i, Sq_index)
+
 
 		# Account for cases where the sample point has no neighbor and belong to no segemets!
 		# TODO: check later if this reflexive link doesn't cause other problems
@@ -338,7 +341,7 @@ if __name__ == "__main__":
 	# ---------------
 	minL = 100
 	dist_threshold = 200
-	angle_threshold = 30
+	angle_threshold = 60
 
 	# ---------------
 	max_link_length = 200
