@@ -332,9 +332,8 @@ if __name__ == "__main__":
 
 	# 0. Parameters:
 	# --------------
-	INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
-	INPUT_FILE_NAME = 'data/3328402_07-11_points.csv'
-	FILE_CODE = '3328402_07-11_points'
+	INPUT_FILE_NAME = 'data/3631800-gps_points_07-11.csv'
+	FILE_CODE = '3631800-gps_points_07-11'
 	RADIUS_METER = 25
 	HEADING_ANGLE_TOLERANCE = 3
 

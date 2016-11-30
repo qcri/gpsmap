@@ -407,3 +407,40 @@ def create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', wa
 		if source < len(points):
 			trajectories.append(points[source: -1])
 	return trajectories
+
+def assign_points_to_cells_v1(mgrid, points):
+	"""
+	Assigns point to cells.
+	:param mgrid: this is an instance of MapGrid
+	:param points: dictionary of points
+	:return: two dictionaries. One that maps points to cells, and one that map cells to points.
+	"""
+	# initialize the two dictionaries
+	cell_to_points = defaultdict(list) # cell --> [checkin ids, ]
+	point_to_cell = dict() # checkin_id --> cell_id
+
+	for ch_id, point in points.iteritems():
+		point_coordinates = point['geo'] # assumes tuple (lon, lat)
+		cell_id = mgrid.find_cell(point_coordinates)
+		if cell_id is None:
+			continue
+		point_to_cell[ch_id] = cell_id
+		cell_to_points[cell_id].append(ch_id)
+	return cell_to_points, point_to_cell
+
+def read_points(fname):
+	"""
+	Read points from file.
+	:param fname: file name
+	:return: dictionaty of points.
+	"""
+	points = defaultdict(dict)
+	with open(fname, 'r') as f:
+		for line in f:
+			X, Y, uid, location_i, device_id, speed, timestamp, longitude, latitude, angle = line.strip().split('\t')
+			points[uid] = {'timestamp': timestamp,
+			               'geo': (float(longitude), float(latitude)),
+			               'speed': float(speed),
+			               'device_id': device_id,
+			               'angle': angle}
+	return points

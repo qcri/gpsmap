@@ -4,7 +4,7 @@
     <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
       <option name="ignoredPackages">
         <value>
-          <list size="83">
+          <list size="86">
             <item index="0" class="java.lang.String" itemvalue="protobuf" />
             <item index="1" class="java.lang.String" itemvalue="pygame" />
             <item index="2" class="java.lang.String" itemvalue="nltk" />
@@ -88,6 +88,9 @@
             <item index="80" class="java.lang.String" itemvalue="PAM" />
             <item index="81" class="java.lang.String" itemvalue="Pillow" />
             <item index="82" class="java.lang.String" itemvalue="openpyxl" />
+            <item index="83" class="java.lang.String" itemvalue="beautifulsoup4" />
+            <item index="84" class="java.lang.String" itemvalue="facebookads" />
+            <item index="85" class="java.lang.String" itemvalue="PyYAML" />
           </list>
         </value>
       </option>
