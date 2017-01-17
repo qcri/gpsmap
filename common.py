@@ -23,6 +23,7 @@ class GpsPoint:
 			self.lat = float(data[8])
 			self.angle = float(data[9])
 			self.ptid = int(data[2])
+			self.locid = int(data[3])
 
 	def get_coordinates(self):
 		"""
@@ -200,7 +201,7 @@ def to_geojson(samples):
 def segments_to_geojson(segments, g):
 	"""
 	Generate the geojson object of a list of segments
-	:param samples: list of samples
+	:param samples: list of segments
 	:return: one geojson object that contains all the points.
 	"""
 	geojson = {'type': 'FeatureCollection', 'features': []}
@@ -400,7 +401,7 @@ def create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', wa
 		destination = 0
 		for i in range(1, len(points)):
 			delta = points[i].timestamp - points[source].timestamp
-			if delta.days*24*3600 + delta.seconds > waiting_threshold:
+			if delta.days * 24 * 3600 + delta.seconds > waiting_threshold:
 				trajectories.append(points[source: i])
 				source = i + 1
 				i += 1
