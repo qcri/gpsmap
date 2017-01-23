@@ -9,6 +9,9 @@ import random
 import json
 import operator
 import networkx as nx
+import fiona
+import random
+
 
 BIN_SEGMENT_LENGTH = 2  # length of bins in meters
 
@@ -445,3 +448,159 @@ def read_points(fname):
 			               'device_id': device_id,
 			               'angle': angle}
 	return points
+
+def is_point_in_bbox(point, bbox):
+	"""
+	Checks whether a point (lon, lat) is inside a bounding box
+	:param point: lon, lat
+	:param bbox: minlat, maxlat, minlon, maxlon
+	:return: True or False
+	"""
+	if  bbox[3] >= point[0] >= bbox[2] and bbox[1] >= point[1] >= bbox[0]:
+		return True
+	return False
+
+
+def build_road_network_from_shapefile_with_no_middle_nodes(shape_file, city=None, bounding_polygon=None):
+	"""
+	IMPORTANT: I took it from my other project: cityres2
+	This function builds a road graph of a city from its road shapefile.
+	The idea is to create an edge for each consecutive nodes in each path.
+	 Use fiona to read the shape file.
+	:param shape_file: the road shape file of the city
+	:param city: the name of the city
+	:param bounding_polygon: personalized bbox of some cities. Helpful to capture part of what is in the shapefile
+	:param simplify: True => behave like nx.read_shp (ignore middle nodes), False => create full graph
+	:return: a graph
+	"""
+
+	g = nx.DiGraph()
+	#road_types = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary']
+	sh = fiona.open(shape_file)
+	intersection_nodes = set()
+	all_nodes = list()
+	paths = []
+	if bounding_polygon is None:
+		# 1. get all nodes
+
+		for obj in sh:
+			path = obj['geometry']['coordinates']
+			#if obj['properties']['type'] not in road_types:
+			#	continue
+			if len(path) < 2:
+				continue
+			if all(isinstance(elem, list) for elem in path):
+				# I have cases where path is a list of lists (list of paths)
+				for elem in path:
+					paths.append(elem)
+					intersection_nodes.add(elem[0])
+					intersection_nodes.add(elem[-1])
+					all_nodes += elem
+			else:
+				paths.append(path)
+				intersection_nodes.add(path[0])
+				intersection_nodes.add(path[-1])
+				all_nodes += path
+
+		# 2. compute node frequencies and remove
+		nodes_cnt = Counter(all_nodes)
+		inters_nodes = [node for node, freq in nodes_cnt if freq > 1]
+		intersection_nodes = intersection_nodes.union(inters_nodes)
+
+		# 3. Build the road network: tested and works as expected :)
+		for path in paths:
+			for i in range(len(path)-1):
+				if path[i] not in intersection_nodes:
+					continue
+				source = path[i]
+				for j in range(i+1, len(path)):
+					if path[j] in intersection_nodes and path[j] != source:
+						target = path[j]
+						g.add_edge(source, target)
+						i = j
+						break
+	else:
+		# 1. get all nodes
+		for obj in sh:
+			path = obj['geometry']['coordinates']
+			if len(path) < 2:
+				continue
+			if is_point_in_bbox(path[0], bounding_polygon):
+				intersection_nodes.add(path[0])
+			if is_point_in_bbox(path[-1], bounding_polygon):
+				intersection_nodes.add(path[-1])
+
+			for i in range(len(path)):
+				all_nodes.append(path[i])
+			paths.append(path)
+		# 2. compute node frequencies and remove
+		nodes_cnt = Counter(all_nodes)
+		inters_nodes = [node for node, freq in nodes_cnt.iteritems() if freq > 1 and is_point_in_bbox(node, bounding_polygon)]
+		intersection_nodes = intersection_nodes.union(inters_nodes)
+
+		# 3. Build the road network: tested and works as expected :)
+		for path in paths:
+			for i in range(len(path)-1):
+				if path[i] not in intersection_nodes:
+					continue
+				source = path[i]
+				for j in range(i+1, len(path)):
+					if path[j] in intersection_nodes and path[j] != source:
+						target = path[j]
+						g.add_edge(source, target)
+						i = j
+						break
+	return g
+
+def  remove_segments_with_no_points(g, points):
+	"""
+	This method should clean a road network g by removing all edges for which there are no points within a certain
+	distance. i.e., segments with no data.
+	:param g:
+	:param points:
+	:return:
+	"""
+
+	return g
+
+def get_marble_holes(rnet=None, radius=1000, frequency=5, type='holes', starting_point=None):
+	"""
+	Compile a list of holes or marbles within a radius, each frequency distance.
+
+	:param rnet: the road network
+	:param radius: the max distance from the starting_point, in meters
+	:param frequency: create a hole/marble every x meters
+	:param type: 'holes' (start from a random point), 'marble' (start from a given point)
+	:return: list of points.
+	"""
+
+	if type == 'holes':
+		# generate a random position ==> lets pick a random node in the network.
+		nodes = rnet.nodes()
+		starting_point = nodes[random.randint(0, len(nodes) - 1)]
+
+	visited_nei = []
+	all_nei = rnet.edges(starting_point)
+	relevant_nei = set([nei[1] for nei in all_nei if haversine(starting_point, nei[1]) <= radius])
+	process_nei = relevant_nei.copy()
+	while True:
+		# exit the loop when there are no more relevant point to process
+		if len(process_nei) == 0:
+			break
+		nei = process_nei.pop()
+		nei_neighbors = [n[1] for n in rnet.edges(nei) if haversine(starting_point, n[1]) <= radius]
+		relevant_nei.union(set(nei_neighbors))
+		for n in nei_neighbors:
+			if n not in relevant_nei:
+				process_nei.append(n)
+
+	# TODO: to be continued
+
+
+
+
+
+
+
+
+

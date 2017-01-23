@@ -9,6 +9,9 @@ from common import create_trajectories
 import time
 import json
 import os
+import networkx as nx
+import sys
+
 
 def prepare_trips(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=600):
 	trips = create_trajectories(INPUT_FILE_NAME=INPUT_FILE_NAME, waiting_threshold=waiting_threshold)
@@ -31,10 +34,46 @@ def prepare_trips(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_
 				prev_loc = loc.locid
 		cnt += 1
 
+def check_bidirectionality(edge_fname='map_inference_algorithms/cao_edges.txt'):
+	with open(edge_fname, 'r') as f:
+		lines = [line for line in f]
+
+	# build edges
+	edges = []
+	for i in range(len(lines) / 3):
+		edge_lines = lines[3 * i: 3 * (i + 1)]
+		source = '_'.join([_.strip() for _ in edge_lines[0].strip().split(',')])
+		target = '_'.join([_.strip() for _ in edge_lines[1].strip().split(',')[:2]])
+		edges.append((source, target))
+
+	# check for indirection
+	nb_reflex_edges = 0
+	for s,t in edges:
+		if (t,s) in edges:
+			nb_reflex_edges += 1
+	print nb_reflex_edges
+
+
+def build_roadnet_from_edges(edge_fname='map_inference_algorithms/cao_edges.txt'):
+	with open(edge_fname, 'r') as f:
+		lines = [line for line in f]
+
+	# build directed graph
+	g = nx.DiGraph()
+	for i in range(len(lines) / 3):
+		edge_lines = lines[3 * i: 3 * (i + 1)]
+		source = tuple([float(_) for _ in edge_lines[0].strip().split(',')])
+		target = tuple([float(_) for _ in edge_lines[1].strip().split(',')[:2]])
+		g.add_edge(source, target)
+	return g
+
+
+
 def save_edges_to_geojson(cao_graph_edges_file='cao_edges.txt'):
-	path = 'map_inference_algorithms/map_inference_algorithms'
+	path = 'map_inference_algorithms'
 	with open('%s/%s' %(path, cao_graph_edges_file), 'r') as f:
 		lines = [line for line in f]
+
 
 	# geojson = {'type': 'FeatureCollection', 'features': []}
 	# for segment_id, s in enumerate(segments):
@@ -74,9 +113,13 @@ def save_trips_points_to_geojson(trips_path='data/trips', prefix='', max_trips=2
 	json.dump(geojson, open('%s/%s_%s' % (path, prefix, 'trip_points.geojson'), 'w'))
 
 if __name__ == '__main__':
+
 	# prepare_trips(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=600)
-	# save_edges_to_geojson(cao_graph_edges_file='cao_edges.txt')
-	nb_trips = 200
+	save_edges_to_geojson(cao_graph_edges_file='cao_edges.txt')
+	# check_bidirectionality(edge_fname='map_inference_algorithms/cao_edges.txt')
+	# sys.exit()
+
+	nb_trips = 1000
 	round_n = 0
 	save_trips_points_to_geojson(trips_path='data/trips', prefix='original', max_trips=nb_trips)
 	save_trips_points_to_geojson(trips_path='map_inference_algorithms/map_inference_algorithms/clarified_trips/n%s/round%s' % (nb_trips, round_n), prefix='clarified', max_trips=nb_trips)
