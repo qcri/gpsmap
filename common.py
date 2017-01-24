@@ -11,6 +11,9 @@ import operator
 import networkx as nx
 import fiona
 import random
+import geopy
+import geopy.distance
+import math
 
 
 BIN_SEGMENT_LENGTH = 2  # length of bins in meters
@@ -563,43 +566,121 @@ def  remove_segments_with_no_points(g, points):
 
 	return g
 
-def get_marble_holes(rnet=None, radius=1000, frequency=5, type='holes', starting_point=None):
+
+def calculate_bearing(latitude_1, longitude_1, latitude_2, longitude_2):
+	"""
+	Got it from this link: http://pastebin.com/JbhWKJ5m
+   Calculation of direction between two geographical points
+   """
+	rlat1 = math.radians(latitude_1)
+	rlat2 = math.radians(latitude_2)
+	rlon1 = math.radians(longitude_1)
+	rlon2 = math.radians(longitude_2)
+	drlon = rlon2 - rlon1
+
+	b = math.atan2(math.sin(drlon) * math.cos(rlat2), math.cos(rlat1) * math.sin(rlat2) -
+	               math.sin(rlat1) * math.cos(rlat2) * math.cos(drlon))
+	return (math.degrees(b) + 360) % 360
+
+
+def partition_edge(edge, distance_interval):
+	"""
+	given an edge, creates holes every x meters (distance_interval)
+	:param edge: a given edge
+	:param distance_interval: in meters
+	:return: list of holes and remaining distance to cover.
+	"""
+
+	# We always return the source node of the edge, hopefully the target will be added as the source of another edge.
+	holes = [edge[0]]
+	d = geopy.distance.VincentyDistance(meters=distance_interval)
+
+	# make sure we are using lat,lon not lon,lat as a reference.
+	startpoint = geopy.Point(edge[0])
+	endpoint = geopy.Point(edge[1])
+
+
+	initial_dist = geopy.distance.distance(startpoint, endpoint).meters
+	if initial_dist < distance_interval:
+		# return [], distance_interval - initial_dist
+		return holes
+
+	# compute the angle=bearing at which we need to be moving.
+	bearing = calculate_bearing(startpoint[0], startpoint[1], endpoint[0], endpoint[1])
+
+	last_point = startpoint
+	for i in range(int(initial_dist) / distance_interval):
+		new_point = geopy.Point(d.destination(point=last_point, bearing=bearing))
+		holes.append((new_point.latitude, new_point.longitude))
+		last_point = new_point
+
+	# return holes, initial_dist - (initial_dist / distance_interval) * distance_interval
+	return holes
+
+
+def get_marble_holes(rnet=None, radius=1000, frequency=5, starting_point=None):
 	"""
 	Compile a list of holes or marbles within a radius, each frequency distance.
 
 	:param rnet: the road network
 	:param radius: the max distance from the starting_point, in meters
 	:param frequency: create a hole/marble every x meters
-	:param type: 'holes' (start from a random point), 'marble' (start from a given point)
 	:return: list of points.
 	"""
 
-	if type == 'holes':
-		# generate a random position ==> lets pick a random node in the network.
-		nodes = rnet.nodes()
-		starting_point = nodes[random.randint(0, len(nodes) - 1)]
+	# This is supposed to be a depth-first search :)
+	all_nei_edges = rnet.edges(starting_point)
 
-	visited_nei = []
-	all_nei = rnet.edges(starting_point)
-	relevant_nei = set([nei[1] for nei in all_nei if haversine(starting_point, nei[1]) <= radius])
+	relevant_nei = set([nei[1] for nei in all_nei_edges if (haversine(starting_point, nei[1]) <= radius and nei[1] != starting_point)])
+	relevant_edges = set([(starting_point, nei) for nei in relevant_nei])
+
 	process_nei = relevant_nei.copy()
-	while True:
-		# exit the loop when there are no more relevant point to process
-		if len(process_nei) == 0:
-			break
+	while len(process_nei) != 0:
 		nei = process_nei.pop()
-		nei_neighbors = [n[1] for n in rnet.edges(nei) if haversine(starting_point, n[1]) <= radius]
-		relevant_nei.union(set(nei_neighbors))
+		nei_neighbors = [n[1] for n in rnet.edges(nei) if haversine(starting_point, n[1]) <= radius
+		                 and nei[1] != starting_point]
 		for n in nei_neighbors:
-			if n not in relevant_nei:
-				process_nei.append(n)
+			if n not in relevant_nei and n != starting_point:
+				relevant_nei.add(n)
+				relevant_edges.add((nei, n))
+				process_nei.add(n)
 
-	# TODO: to be continued
+	holes = []
+	for edge in relevant_edges:
+		holes += partition_edge(edge, distance_interval=frequency)
 
+	return holes
 
+def compute_approximate_precision_recall_f1(marbles, holes, distance_threshold=20):
+	"""
+	Compute approximate precision, recall, and f1 measures.
+	This can lead to a recall > 1 because different marbles can land in the same hole!
+	:param holes:
+	:param marbles:
+	:param distance_threshold: two points in holes and marbles match if their distance is lower than this.
+	:return:
+	"""
 
+	if len(marbles) == 0 or len(holes) == 0:
+		return 0, 0, 0
 
+	# Transform distance radius from meters to radius
+	RADIUS_DEGREE = distance_threshold * 10e-6
 
+	# create a kd-tree index to speed-up lookups for matchings between holes and marbles.
+	holes_kd_index = cKDTree(holes)
+
+	correct_marbles = 0
+	for marble in marbles:
+		neighbors = holes_kd_index.query_ball_point(x=marble, r=RADIUS_DEGREE, p=2)
+		if len(neighbors) > 0:
+				correct_marbles += 1
+
+	precision = float(correct_marbles) / len(marbles)
+	recall = float(correct_marbles) / len(holes)
+	f1 = 2 * (precision * recall) / (precision + recall)
+
+	return precision, recall, f1
 
 
 

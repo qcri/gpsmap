@@ -13,8 +13,13 @@
 #
 
 import networkx as nx
-from common import build_road_network_from_shapefile_with_no_middle_nodes, remove_segments_with_no_points
+from common import build_road_network_from_shapefile_with_no_middle_nodes, remove_segments_with_no_points, \
+	get_marble_holes, compute_approximate_precision_recall_f1
 from interface_cao2009 import build_roadnet_from_edges
+import random
+import geopy.distance
+from scipy.spatial import cKDTree
+
 
 # 1. I have used QGIS to crop OSM map to the bbox of our data.
 
@@ -31,10 +36,31 @@ edge_file = 'map_inference_algorithms/cao_edges.txt'
 test_rn = build_roadnet_from_edges(edge_fname=edge_file)
 
 # 5. marble/holes algorithm:
-holes = get_marble_holes(rnet=gt_rn, radius=1000, frequency=5)
+# 5.1. holes: generate a random position ==> lets pick a random node in the network.
+nodes = gt_rn.nodes()
+starting_point = nodes[random.randint(0, len(nodes) - 1)]
+holes = get_marble_holes(rnet=gt_rn, radius=1000, frequency=5, starting_point=starting_point)
 
-print gt_rn.nodes()
+# 5.2. marbles: find closest node in test_rn to starting point.
+nodes = test_rn.nodes()
+dist = [geopy.distance.distance(geopy.Point(starting_point), geopy.Point(n)).meters for n in nodes]
+indx_closest = dist.index(min(dist))
+closest_starting_point = nodes[indx_closest]
+marbles = get_marble_holes(rnet=test_rn, radius=1000, frequency=5, starting_point=closest_starting_point)
+
+# 6. precision, recall, f1.
+distance_threshold = 20 # in meters
+precision, recall, f1 = compute_approximate_precision_recall_f1(marbles=marbles, holes=holes, distance_threshold=distance_threshold)
+
+
+print 'GT nodes:', len(gt_rn.nodes())
+print 'GT starting point:', starting_point
+print 'GT Holes:', len(holes), holes[:10]
+
 print '===================='
-print test_rn.nodes()
-
+print 'Test nodes:', len(test_rn.nodes())
+print 'Test starting point:', closest_starting_point
+print 'Marbles:', len(marbles), marbles[:10]
+print 'distance initial hole and marble:', geopy.distance.distance(geopy.Point(starting_point), geopy.Point(closest_starting_point)).meters
+print 'precision: %s\trecall: %s\t f1: %s' % (precision, recall, f1)
 
