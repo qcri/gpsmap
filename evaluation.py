@@ -82,11 +82,16 @@ print 'spurious: %s\tmissing: %s\t f1: %s' % (spurious, missing, f1)
 #for s, t in gt_rn.edges():
 #	plt.plot([s[0], t[0]], [s[1], t[1]], color='blue')
 
-msizes = [5 for _ in range(len(holes))]
-msizes [0] = 100
-
+hsizes = [5 for _ in range(len(holes))]
+hsizes [0] = 100
 for hole in holes:
-	plt.scatter([h[0] for h in holes], [h[1] for h in holes], marker='o', s=msizes)
+	plt.scatter([h[0] for h in holes], [h[1] for h in holes], marker='o', color='blue', s=hsizes)
+
+msizes = [5 for _ in range(len(marbles))]
+msizes [0] = 100
+for hole in holes:
+	plt.scatter([h[0] for h in marbles], [h[1] for h in marbles], marker='o', color='red', s=msizes)
+
 
 #plt.scatter([starting_point[0]], [starting_point[1]], marker='*', color='red', s=20)
 
