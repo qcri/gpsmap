@@ -62,7 +62,7 @@ marbles = get_marble_holes(rnet=test_rn, radius=1000, frequency=5, starting_poin
 
 # 6. precision, recall, f1.
 distance_threshold = 20 # in meters
-precision, recall, f1 = compute_approximate_precision_recall_f1(marbles=marbles, holes=holes, distance_threshold=distance_threshold)
+spurious, missing, f1 = compute_approximate_precision_recall_f1(marbles=marbles, holes=holes, distance_threshold=distance_threshold)
 
 
 print 'GT nodes:', len(gt_rn.nodes())
@@ -74,7 +74,8 @@ print 'Test nodes:', len(test_rn.nodes())
 print 'Test starting point:', closest_starting_point
 print 'Marbles:', len(marbles), marbles[:10]
 print 'distance initial hole and marble:', geopy.distance.distance(geopy.Point(starting_point), geopy.Point(closest_starting_point)).meters
-print 'precision: %s\trecall: %s\t f1: %s' % (precision, recall, f1)
+print 'spurious: %s\tmissing: %s\t f1: %s' % (spurious, missing, f1)
+# print 'precision: %s\trecall: %s\t f1: %s' % (spurious, missing, f1)
 
 
 # Plotting things for visualization:
@@ -82,7 +83,8 @@ print 'precision: %s\trecall: %s\t f1: %s' % (precision, recall, f1)
 #	plt.plot([s[0], t[0]], [s[1], t[1]], color='blue')
 
 msizes = [5 for _ in range(len(holes))]
-msizes [0] = 20
+msizes [0] = 100
+
 for hole in holes:
 	plt.scatter([h[0] for h in holes], [h[1] for h in holes], marker='o', s=msizes)
 

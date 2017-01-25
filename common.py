@@ -661,6 +661,11 @@ def compute_approximate_precision_recall_f1(marbles, holes, distance_threshold=2
 	:return:
 	"""
 
+
+	# spurious = spurious marbles / all marbles
+	# missing = empty holes /  all holes.
+	# f measure = 2. (1-spurious) (1-missing) / [(1-spurious) + (1-missing)]
+
 	if len(marbles) == 0 or len(holes) == 0:
 		return 0, 0, 0
 
@@ -669,18 +674,35 @@ def compute_approximate_precision_recall_f1(marbles, holes, distance_threshold=2
 
 	# create a kd-tree index to speed-up lookups for matchings between holes and marbles.
 	holes_kd_index = cKDTree(holes)
+	marbles_kd_index = cKDTree(marbles)
 
 	correct_marbles = 0
+	spurious_marbles = 0
 	for marble in marbles:
 		neighbors = holes_kd_index.query_ball_point(x=marble, r=RADIUS_DEGREE, p=2)
 		if len(neighbors) > 0:
 				correct_marbles += 1
+		else:
+				spurious_marbles += 1
 
-	precision = float(correct_marbles) / len(marbles)
-	recall = float(correct_marbles) / len(holes)
-	f1 = 2 * (precision * recall) / (precision + recall)
+	full_holes = 0
+	missing_holes = 0
+	for hole in holes:
+		neighbors = marbles_kd_index.query_ball_point(x=hole, r=RADIUS_DEGREE, p=2)
+		if len(neighbors) > 0:
+			full_holes += 1
+		else:
+			missing_holes += 1
 
-	return precision, recall, f1
+	spurious = float(spurious_marbles) / len(marbles)
+	missing = float(missing_holes) / len(holes)
+	f1 = 2 * (1 - spurious) * (1 - missing) / ((1 - spurious) + (1 - missing))
+	return spurious, missing, f1
+
+	#precision = float(correct_marbles) / len(marbles)
+	#recall = float(correct_marbles) / len(holes)
+	#f1 = 2 * (precision * recall) / (precision + recall)
+	#return precision, recall, f1
 
 
 def build_roadnet_from_edges(edge_fname='map_inference_algorithms/cao_edges.txt'):
