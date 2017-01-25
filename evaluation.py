@@ -35,34 +35,63 @@ print gt_rn.number_of_nodes(), gt_rn.number_of_edges()
 gt_rn = remove_segments_with_no_points(g=gt_rn, points=None)
 
 # 4. build a directed graph for one of the algorithms:
-edge_file = 'evaluation/cao_edges.txt'
-test_rn = build_roadnet_from_edges(edge_fname=edge_file)
+# edge_file = 'evaluation/cao_edges.txt'
+# test_rn = build_roadnet_from_edges(edge_fname=edge_file)
 
-edge_file = 'evaluation/rss_edges.txt'
+edge_file = 'evaluation/rss_edges_v1.txt'
 test_rn = build_roadnet_from_edges_rss(edge_fname=edge_file)
-
-#for s, t in test_rn.edges()[:1000]:
-#	plt.plot([s[0], t[0]], [s[1], t[1]], color='black')
-
-
-
 
 # 5. marble/holes algorithm:
 # 5.1. holes: generate a random position ==> lets pick a random node in the network.
-nodes = gt_rn.nodes()
-starting_point = nodes[random.randint(0, len(nodes) - 1)]
-holes = get_marble_holes(rnet=gt_rn, radius=1000, frequency=5, starting_point=starting_point)
+gt_nodes = gt_rn.nodes()
+nb_runs = 20
+distance_thresholds = [5, 10, 15, 20, 25] # in meters
+holes_marbles_interval = 5 # meters
+holes_marbles_radius = 2000 # meters
 
-# 5.2. marbles: find closest node in test_rn to starting point.
-nodes = test_rn.nodes()
-dist = [geopy.distance.distance(geopy.Point(starting_point), geopy.Point(n)).meters for n in nodes]
-indx_closest = dist.index(min(dist))
-closest_starting_point = nodes[indx_closest]
-marbles = get_marble_holes(rnet=test_rn, radius=1000, frequency=5, starting_point=closest_starting_point)
+global_missings = []
+global_spuriouses = []
+global_f1s = []
+for distance_threshold in distance_thresholds:
+	missings = []
+	spuriouses = []
+	f1s = []
+	for i in range(nb_runs):
+		starting_point = gt_nodes[random.randint(0, len(gt_nodes) - 1)]
+		holes = get_marble_holes(rnet=gt_rn, radius=1000, frequency=holes_marbles_interval, starting_point=starting_point)
 
-# 6. precision, recall, f1.
-distance_threshold = 20 # in meters
-spurious, missing, f1 = compute_approximate_precision_recall_f1(marbles=marbles, holes=holes, distance_threshold=distance_threshold)
+		# 5.2. marbles: find closest node in test_rn to starting point.
+		nodes = test_rn.nodes()
+		dist = [geopy.distance.distance(geopy.Point(starting_point), geopy.Point(n)).meters for n in nodes]
+		indx_closest = dist.index(min(dist))
+		closest_starting_point = nodes[indx_closest]
+		marbles = get_marble_holes(rnet=test_rn, radius=1000, frequency=holes_marbles_interval, starting_point=closest_starting_point)
+		# print 'nb_holes:%s\t nb_marbles:%s' % (len(holes), len(marbles))
+		# 6. precision, recall, f1.
+		spurious, missing, f1 = compute_approximate_precision_recall_f1(marbles=marbles, holes=holes, distance_threshold=distance_threshold)
+		print 'distance:%s \tspurious: %s\tmissing: %s\t f1: %s' % (distance_threshold, spurious, missing, f1)
+		spuriouses.append(spurious)
+		missings.append(missing)
+		f1s.append(f1)
+	global_spuriouses.append(sum(spuriouses) / len(spuriouses))
+	global_missings.append(sum(missings) / len(missings))
+	global_f1s.append(sum(f1s) / len(f1s))
+
+with open('data/f1_scores_s3r_v1.txt', 'w') as f:
+	for dis, sp, mi, f1 in zip(distance_thresholds, global_spuriouses, global_missings, global_f1s):
+		f.write('%s,%s,%s,%s\n' % (dis, sp, mi, f1))
+#
+# distance_thresholds = []
+# global_f1s = []
+# with open('data/f1_scores_s3r_v1.txt', 'r') as f:
+# 	for line in f:
+# 		distance_thresholds.append(float(line.split(',')[0]))
+# 		global_f1s.append(float(line.split(',')[3]))
+plt.plot(distance_thresholds, global_f1s, marker='o', color='black')
+plt.ylabel('F-score')
+plt.xlabel('Matching distance threshold (m)')
+plt.legend(['R3S'])
+plt.savefig('figs/f1_scores_s3r_v1.png', format='PNG')
 
 
 print 'GT nodes:', len(gt_rn.nodes())
@@ -78,22 +107,23 @@ print 'spurious: %s\tmissing: %s\t f1: %s' % (spurious, missing, f1)
 # print 'precision: %s\trecall: %s\t f1: %s' % (spurious, missing, f1)
 
 
+# =====================================================================
 # Plotting things for visualization:
-#for s, t in gt_rn.edges():
-#	plt.plot([s[0], t[0]], [s[1], t[1]], color='blue')
-
-hsizes = [5 for _ in range(len(holes))]
-hsizes [0] = 100
-for hole in holes:
-	plt.scatter([h[0] for h in holes], [h[1] for h in holes], marker='o', color='blue', s=hsizes)
-
-msizes = [5 for _ in range(len(marbles))]
-msizes [0] = 100
-for hole in holes:
-	plt.scatter([h[0] for h in marbles], [h[1] for h in marbles], marker='o', color='red', s=msizes)
-
-
-#plt.scatter([starting_point[0]], [starting_point[1]], marker='*', color='red', s=20)
-
-plt.axis('equal')
-plt.show()
+# =====================================================================
+#
+# #for s, t in gt_rn.edges():
+# #	plt.plot([s[0], t[0]], [s[1], t[1]], color='black')
+#
+# #for s, t in test_rn.edges():
+# #	plt.plot([s[0], t[0]], [s[1], t[1]], color='blue')
+#
+# hsizes = [5 for _ in range(len(holes))]
+# hsizes[0] = 100
+# plt.scatter([h[0] for h in holes], [h[1] for h in holes], marker='o', color='blue', s=hsizes)
+#
+# msizes = [5 for _ in range(len(marbles) + 1)]
+# msizes[0] = 100
+# marbles = [closest_starting_point] + marbles
+# plt.scatter([h[0] for h in marbles], [h[1] for h in marbles], marker='o', color='red', s=msizes)
+# plt.axis('equal')
+# plt.show()

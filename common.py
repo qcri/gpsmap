@@ -696,7 +696,11 @@ def compute_approximate_precision_recall_f1(marbles, holes, distance_threshold=2
 
 	spurious = float(spurious_marbles) / len(marbles)
 	missing = float(missing_holes) / len(holes)
-	f1 = 2 * (1 - spurious) * (1 - missing) / ((1 - spurious) + (1 - missing))
+	#print 'spurious:%s\tmissing:%s' % (spurious, missing)
+	if spurious + missing == 2: # to avoid division by zero
+		f1 = 0
+	else:
+		f1 = 2 * (1 - spurious) * (1 - missing) / ((1 - spurious) + (1 - missing))
 	return spurious, missing, f1
 
 	#precision = float(correct_marbles) / len(marbles)
