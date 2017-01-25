@@ -683,5 +683,25 @@ def compute_approximate_precision_recall_f1(marbles, holes, distance_threshold=2
 	return precision, recall, f1
 
 
+def build_roadnet_from_edges(edge_fname='map_inference_algorithms/cao_edges.txt'):
+	with open(edge_fname, 'r') as f:
+		lines = [line for line in f]
+
+	# build directed graph
+	g = nx.DiGraph()
+	for i in range(len(lines) / 3):
+		edge_lines = lines[3 * i: 3 * (i + 1)]
+		source = tuple([float(_) for _ in edge_lines[0].strip().split(',')])
+		target = tuple([float(_) for _ in edge_lines[1].strip().split(',')[:2]])
+		g.add_edge(source, target)
+	return g
+
+def build_roadnet_from_edges_rss(edge_fname='map_inference_algorithms/rss_edges.txt'):
+	g = nx.DiGraph()
+	with open(edge_fname, 'r') as f:
+		for line in f:
+			lat1, lon1, lat2, lon2 = map(float, line.split(' '))
+			g.add_edge((lat1, lon1), (lat2, lon2))
+	return g
 
 

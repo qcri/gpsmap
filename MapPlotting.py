@@ -276,6 +276,13 @@ def draw_colorful_polygones(fname, att_name='rings'):
 
 	plt.show()
 
+
+def draw_graph_edges(g):
+	x, y = [], []
+
+	for s, t in g.edges():
+		plt.plot([s[0], t[0]], [s[1], t[1]])
+
 #draw_colorful_polygones(fname)
 
 #

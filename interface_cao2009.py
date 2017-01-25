@@ -54,21 +54,6 @@ def check_bidirectionality(edge_fname='map_inference_algorithms/cao_edges.txt'):
 	print nb_reflex_edges
 
 
-def build_roadnet_from_edges(edge_fname='map_inference_algorithms/cao_edges.txt'):
-	with open(edge_fname, 'r') as f:
-		lines = [line for line in f]
-
-	# build directed graph
-	g = nx.DiGraph()
-	for i in range(len(lines) / 3):
-		edge_lines = lines[3 * i: 3 * (i + 1)]
-		source = tuple([float(_) for _ in edge_lines[0].strip().split(',')])
-		target = tuple([float(_) for _ in edge_lines[1].strip().split(',')[:2]])
-		g.add_edge(source, target)
-	return g
-
-
-
 def save_edges_to_geojson(cao_graph_edges_file='cao_edges.txt'):
 	path = 'map_inference_algorithms'
 	with open('%s/%s' %(path, cao_graph_edges_file), 'r') as f:
