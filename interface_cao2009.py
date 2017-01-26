@@ -17,7 +17,7 @@ def prepare_trips(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_
 	trips = create_trajectories(INPUT_FILE_NAME=INPUT_FILE_NAME, waiting_threshold=waiting_threshold)
 	cnt = 0
 	for trip in trips:
-		if len(trip) < 10:
+		if len(trip) < 2:
 			continue
 		print 'trip:', cnt, len(trip)
 		with open('data/trips/trip_%s.txt' % cnt, 'w') as g:
@@ -99,12 +99,13 @@ def save_trips_points_to_geojson(trips_path='data/trips', prefix='', max_trips=2
 
 if __name__ == '__main__':
 
-	# prepare_trips(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=600)
+	# prepare_trips(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=11)
+
 	save_edges_to_geojson(cao_graph_edges_file='cao_edges.txt')
 	# check_bidirectionality(edge_fname='map_inference_algorithms/cao_edges.txt')
 	# sys.exit()
 
 	nb_trips = 1000
 	round_n = 0
-	save_trips_points_to_geojson(trips_path='data/trips', prefix='original', max_trips=nb_trips)
-	save_trips_points_to_geojson(trips_path='map_inference_algorithms/map_inference_algorithms/clarified_trips/n%s/round%s' % (nb_trips, round_n), prefix='clarified', max_trips=nb_trips)
+	#save_trips_points_to_geojson(trips_path='data/trips', prefix='original', max_trips=nb_trips)
+	#save_trips_points_to_geojson(trips_path='map_inference_algorithms/map_inference_algorithms/clarified_trips/n%s/round%s' % (nb_trips, round_n), prefix='clarified', max_trips=nb_trips)

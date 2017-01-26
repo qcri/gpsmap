@@ -366,13 +366,13 @@ if __name__ == '__main__':
     # all_trips = TripLoader.get_all_trips("/home/sofiane/projects/research/mapConstructionSOTA/uic_shuttle_trips_110401_110430/trips/")
 
     # Data from QMIC for one day: 07-11
-    all_trips = TripLoader.get_all_trips("/home/sofiane/PycharmProjects/gpsmap/data/trips/")
+    all_trips = TripLoader.get_all_trips("../data/trips/")
 
     # global parameters
     force_step = 1.0
     spring_force_constant = 0.005
     attraction_force_sigma = 5.0
-    trip_max = 1000  # len(all_trips)
+    trip_max = 36802  # len(all_trips)
 
     (opts, args) = getopt.getopt(sys.argv[1:], "f:s:a:n:h")
     

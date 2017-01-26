@@ -465,8 +465,8 @@ from location import TripLoader
 if __name__ == '__main__':
     
     # default values
-    trip_round = 195
-    trip_max = 1000
+    trip_round = 1
+    trip_max = 36802
     
     (opts, args) = getopt.getopt(sys.argv[1:], "p:v:d:b:r:n:h")
     

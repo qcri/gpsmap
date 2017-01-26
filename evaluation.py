@@ -96,17 +96,18 @@ with open('data/f1_scores_%s_v1.txt' % method_name, 'w') as f:
 	for dis, sp, mi, f1 in zip(distance_thresholds, global_spuriouses, global_missings, global_f1s):
 		f.write('%s,%s,%s,%s\n' % (dis, sp, mi, f1))
 #
+# method_name = 'cao'
 # distance_thresholds = []
 # global_f1s = []
-# with open('data/f1_scores_s3r_v1.txt', 'r') as f:
+# with open('data/f1_scores_%s_v1.txt' % method_name, 'r') as f:
 # 	for line in f:
 # 		distance_thresholds.append(float(line.split(',')[0]))
 # 		global_f1s.append(float(line.split(',')[3]))
-plt.plot(distance_thresholds, global_f1s, marker='o', color='black')
-plt.ylabel('F-score')
-plt.xlabel('Matching distance threshold (m)')
-plt.legend(['R3S'])
-plt.savefig('figs/f1_scores_%s_v1.png' % method_name, format='PNG')
+# plt.plot(distance_thresholds, global_f1s, marker='o', color='black')
+# plt.ylabel('F-score')
+# plt.xlabel('Matching distance threshold (m)')
+# plt.legend([method_name])
+# plt.savefig('figs/f1_scores_%s_v1.png' % method_name, format='PNG')
 
 
 print 'GT nodes:', len(gt_rn.nodes())

@@ -1,3 +1,5 @@
+# SOfiane: need to install openCV: http://www.pyimagesearch.com/2016/10/24/ubuntu-16-04-how-to-install-opencv/
+
 import cv
 from math import atan2, sqrt, ceil, pi
 import sys, getopt, os
@@ -5,7 +7,7 @@ from location import TripLoader
 from pylibs import spatialfunclib
 from itertools import tee, izip
 
-all_trips = TripLoader.get_all_trips("trips/")
+all_trips = TripLoader.get_all_trips("../data/trips/")
 
 ##
 ## important parameters
@@ -58,10 +60,10 @@ all_lats = [l.latitude for l in all_locations]
 all_lons = [l.longitude for l in all_locations]
 
 # find bounding box for data
-min_lat = min(all_lats)-0.003
-max_lat = max(all_lats)+0.003
-min_lon = min(all_lons)-0.005
-max_lon = max(all_lons)+0.005
+min_lat = min(all_lats) - 0.003
+max_lat = max(all_lats) + 0.003
+min_lon = min(all_lons) - 0.005
+max_lon = max(all_lons) + 0.005
 
 diff_lat = max_lat - min_lat
 diff_lon = max_lon - min_lon
