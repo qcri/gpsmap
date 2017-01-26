@@ -555,16 +555,28 @@ def build_road_network_from_shapefile_with_no_middle_nodes(shape_file, city=None
 						break
 	return g
 
-def  remove_segments_with_no_points(g, points):
+
+def remove_segments_with_no_points(rn, data, distance_threshold=5):
 	"""
-	This method should clean a road network g by removing all edges for which there are no points within a certain
+	This method should clean a road network rn by removing all edges for which there are no points within a certain
 	distance. i.e., segments with no data.
-	:param g:
-	:param points:
-	:return:
+	HEURISTIC: remove edges for which we don't have points in the middle.
+	:param rn: road network
+	:param data: list of gps points
+	:return: return a clean road network
 	"""
 
-	return g
+	# 1. build a kd tree of all data:
+	kd_index = cKDTree(list(set(data)))
+	# Transform distance radius from meters to radius
+	RADIUS_DEGREE = distance_threshold * 10e-6
+
+	for s, t in rn.edges():
+		middle_p = ((s[0] + t[0]) / 2, (s[1] + t[1]) / 2)
+		neighbors = kd_index.query_ball_point(x=middle_p, r=RADIUS_DEGREE, p=2)
+		if len(neighbors) == 0:
+			rn.remove_edge(s, t)
+	return rn
 
 
 def calculate_bearing(latitude_1, longitude_1, latitude_2, longitude_2):

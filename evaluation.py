@@ -27,19 +27,27 @@ from scipy.spatial import cKDTree
 # 1. I have used QGIS to crop OSM map to the bbox of our data.
 
 # 2. Create directed graph from OSM:
-shapefile = 'data/shapefiles/relevant_osm_part_doha_roads.shp'
-gt_rn = build_road_network_from_shapefile_with_no_middle_nodes(shape_file=shapefile)
+# shapefile = 'data/shapefiles/relevant_osm_part_doha_roads.shp'
+# gt_rn = build_road_network_from_shapefile_with_no_middle_nodes(shape_file=shapefile)
+# nx.write_gpickle(gt_rn, 'data/doha_roads.gpickle')
+
+gt_rn = nx.read_gpickle('data/clean_doha_roads.gpickle')
 print gt_rn.number_of_nodes(), gt_rn.number_of_edges()
 
-# 3. TODO: implement the function that removes non supervised roads.
-gt_rn = remove_segments_with_no_points(g=gt_rn, points=None)
+# 3. Rmove segments with no points: Done in cleaning_maps.py
+#gt_rn = remove_segments_with_no_points(g=gt_rn, points=None)
+
+method_name = 'r3s'
+method_name = 'cao'
 
 # 4. build a directed graph for one of the algorithms:
-# edge_file = 'evaluation/cao_edges.txt'
-# test_rn = build_roadnet_from_edges(edge_fname=edge_file)
+if method_name == 'cao':
+	edge_file = 'evaluation/cao_edges.txt'
+	test_rn = build_roadnet_from_edges(edge_fname=edge_file)
+elif method_name == 'r3s':
+	edge_file = 'evaluation/rss_edges_v1.txt'
+	test_rn = build_roadnet_from_edges_rss(edge_fname=edge_file)
 
-edge_file = 'evaluation/rss_edges_v1.txt'
-test_rn = build_roadnet_from_edges_rss(edge_fname=edge_file)
 
 # 5. marble/holes algorithm:
 # 5.1. holes: generate a random position ==> lets pick a random node in the network.
@@ -56,7 +64,8 @@ for distance_threshold in distance_thresholds:
 	missings = []
 	spuriouses = []
 	f1s = []
-	for i in range(nb_runs):
+	i = 0
+	while i < nb_runs:
 		starting_point = gt_nodes[random.randint(0, len(gt_nodes) - 1)]
 		holes = get_marble_holes(rnet=gt_rn, radius=1000, frequency=holes_marbles_interval, starting_point=starting_point)
 
@@ -65,19 +74,24 @@ for distance_threshold in distance_thresholds:
 		dist = [geopy.distance.distance(geopy.Point(starting_point), geopy.Point(n)).meters for n in nodes]
 		indx_closest = dist.index(min(dist))
 		closest_starting_point = nodes[indx_closest]
+		starting_distance = geopy.distance.distance(geopy.Point(starting_point), geopy.Point(closest_starting_point)).meters
+		if starting_distance > 5:
+			print 'not considering this run'
+			continue
 		marbles = get_marble_holes(rnet=test_rn, radius=1000, frequency=holes_marbles_interval, starting_point=closest_starting_point)
 		# print 'nb_holes:%s\t nb_marbles:%s' % (len(holes), len(marbles))
 		# 6. precision, recall, f1.
 		spurious, missing, f1 = compute_approximate_precision_recall_f1(marbles=marbles, holes=holes, distance_threshold=distance_threshold)
-		print 'distance:%s \tspurious: %s\tmissing: %s\t f1: %s' % (distance_threshold, spurious, missing, f1)
+		print i, ': distance:%s \tspurious: %s\tmissing: %s\t f1: %s' % (distance_threshold, spurious, missing, f1)
 		spuriouses.append(spurious)
 		missings.append(missing)
 		f1s.append(f1)
+		i += 1
 	global_spuriouses.append(sum(spuriouses) / len(spuriouses))
 	global_missings.append(sum(missings) / len(missings))
 	global_f1s.append(sum(f1s) / len(f1s))
 
-with open('data/f1_scores_s3r_v1.txt', 'w') as f:
+with open('data/f1_scores_%s_v1.txt' % method_name, 'w') as f:
 	for dis, sp, mi, f1 in zip(distance_thresholds, global_spuriouses, global_missings, global_f1s):
 		f.write('%s,%s,%s,%s\n' % (dis, sp, mi, f1))
 #
@@ -91,7 +105,7 @@ plt.plot(distance_thresholds, global_f1s, marker='o', color='black')
 plt.ylabel('F-score')
 plt.xlabel('Matching distance threshold (m)')
 plt.legend(['R3S'])
-plt.savefig('figs/f1_scores_s3r_v1.png', format='PNG')
+plt.savefig('figs/f1_scores_%s_v1.png' % method_name, format='PNG')
 
 
 print 'GT nodes:', len(gt_rn.nodes())
