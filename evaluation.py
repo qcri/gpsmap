@@ -60,6 +60,7 @@ holes_marbles_radius = 2000 # meters
 global_missings = []
 global_spuriouses = []
 global_f1s = []
+
 for distance_threshold in distance_thresholds:
 	missings = []
 	spuriouses = []
