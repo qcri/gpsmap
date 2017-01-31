@@ -1,5 +1,5 @@
 from common import *
-
+import sys
 def find_sample(spid=None, rand_pt=None, neighbors=None, draw_output=False):
 	if len(neighbors) < 2:
 		return SamplePoint(spid=spid, lon=rand_pt.lon, lat=rand_pt.lat, speed=rand_pt.speed, angle=rand_pt.angle,
@@ -120,7 +120,7 @@ def traj_meanshift_sampling(filecode=None, RADIUS_METER=25, HEADING_ANGLE_TOLERA
 	"""
 	RADIUS_DEGREE = RADIUS_METER * 10e-6
 	gpspoint_to_samples = dict()
-	data_points, raw_points, points_tree = load_data(fname='data/%s.csv' % filecode)
+	data_points, raw_points, points_tree = load_data(fname='data/gps_data/%s.csv' % filecode)
 	print 'nb points:', len(data_points), 'points example:', data_points[0], raw_points[0]
 
 	samples = list()
@@ -128,7 +128,8 @@ def traj_meanshift_sampling(filecode=None, RADIUS_METER=25, HEADING_ANGLE_TOLERA
 	available_point_indexes = np.arange(0, len(data_points))
 	spid_cnt = 1
 	while len(available_point_indexes) > 0:
-		print 'THERE ARE %s points, removed %s points' % (len(available_point_indexes), len(removed_points))
+		sys.stdout.write('\rTHERE ARE %s points/ removed %s points ....' % (len(available_point_indexes), len(removed_points)))
+		sys.stdout.flush()
 		rand_index = random.sample(available_point_indexes, 1)[0]
 		rand_pt = data_points[rand_index]
 		# Find all neighbors in the given radius: RADIUS
@@ -264,6 +265,7 @@ def road_segment_clustering(filecode=None, samples=None, minL=100, dist_threshol
 		# if len(Sq_candidates_index) + len(Sp_candidates_index) == 0:
 		# 	g.add_edge(i, i)
 
+
 	#segments = sorted(nx.weakly_connected_components(g), key=len, reverse=True)
 	paths = get_paths(g)
 	print 'NB edges:', len(g.edges()), 'NB segments:', len(paths), 'NB nodes:', len(g)
@@ -302,7 +304,7 @@ def inferring_links_between_segments(filecode=None, samples=None, segments=None,
 	# read the mappings samples to segments:
 	if samples_to_segments is None:
 		samples_to_segments = {int(k): v for k, v in json.load(open('data/%s_mappings_sample_to_segment.json' % filecode)).iteritems()}
-	# read samples and segments. Each segment is list of sample points: [s1, s2, ...sl]
+	# read samples and segments. Each segment is a list of sample points: [s1, s2, ...sl]
 	if samples is None:
 		data = json.load(open('data/%s_samples.geojson' % filecode))
 		samples, samples_dict = to_samplepoints(data)
@@ -316,9 +318,10 @@ def inferring_links_between_segments(filecode=None, samples=None, segments=None,
 		# the idea here is to assign each point to the closest sample point.
 		# 1. map gps points in trajectories into samples.
 		traj_samples = uniquify([points_to_samples[p.ptid] for p in traj])
-		print traj_samples
+
 		# 2. map samples into segments: in some cases some samples are missing from segments if they are not connected to other samples
 		traj_segments = uniquify([samples_to_segments[s] for s in traj_samples if s in samples_to_segments.keys()])
+
 		# 3. create an edge between every successive segments: last node in s_i with first element in s_i+1
 		# TODO: I should create a link only if the distance between two nodes is lower than a given threshold distance.
 		links += [(segments[traj_segments[i]][-1], segments[traj_segments[i + 1]][0]) for i in range(len(traj_segments) - 1)]
@@ -328,12 +331,32 @@ def inferring_links_between_segments(filecode=None, samples=None, segments=None,
 	json.dump(geojson, open('data/%s_links.geojson' % filecode, 'w'))
 
 
+def create_final_graph(segments_fname, links_fname):
+	g = nx.DiGraph()
+	data = json.load(open(segments_fname))
+	segment_pt_coordinates, segments = to_segments(data)
+	for id, seg in segment_pt_coordinates.iteritems():
+		print len(seg[0]), seg[0]
+		for i in range(len(seg[0]) - 1):
+			g.add_edge(tuple(seg[0][i]), tuple(seg[0][i+1]))
+
+	data = json.load(open(links_fname))
+	links_pt_coordinates, links = to_links(data)
+	for id, link in links_pt_coordinates.iteritems():
+			g.add_edge(tuple(link[0][0]), tuple(link[0][1]))
+
+	with open('data/kdd16_edges.txt', 'w') as fout:
+		for s,t in g.edges():
+			fout.write('%s,%s\n%s,%s\n\n' % (s[0], s[1], t[0], t[1]))
+
+
+
 if __name__ == "__main__":
 
 	# 0. Parameters:
 	# --------------
-	INPUT_FILE_NAME = 'data/3631800-gps_points_07-11.csv'
-	FILE_CODE = '3631800-gps_points_07-11'
+	INPUT_FILE_NAME = 'data/gps_data/gps_points_07-11.csv'
+	FILE_CODE = 'gps_points_07-11'
 	RADIUS_METER = 25
 	HEADING_ANGLE_TOLERANCE = 3
 
@@ -346,8 +369,7 @@ if __name__ == "__main__":
 	max_link_length = 200
 	# -----------------
 	# 1. find samples
-	traj_meanshift_sampling(filecode=FILE_CODE, RADIUS_METER=RADIUS_METER,
-	                        HEADING_ANGLE_TOLERANCE=HEADING_ANGLE_TOLERANCE)
+	traj_meanshift_sampling(filecode=FILE_CODE, RADIUS_METER=RADIUS_METER, HEADING_ANGLE_TOLERANCE=HEADING_ANGLE_TOLERANCE)
 
 	# 2. find segments
 	road_segment_clustering(filecode=FILE_CODE, minL=100, dist_threshold=dist_threshold, angle_threshold=angle_threshold)
@@ -355,3 +377,6 @@ if __name__ == "__main__":
 	# 3. Inferring links between segments
 	inferring_links_between_segments(filecode=FILE_CODE, samples=None, segments=None, points_to_samples=None,
 	                                 samples_to_segments=None, max_link_length=max_link_length)
+
+	# 4. Write output to the file:
+	create_final_graph(segments_fname='data/gps_points_07-11_segments.geojson', links_fname='data/gps_points_07-11_links.geojson')

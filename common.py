@@ -256,6 +256,21 @@ def to_segments(geojson):
 
 	return segment_pt_coordinates, segment_pt_ids
 
+def to_links(geojson):
+	"""
+	return link coordinates and link ids. Both are list of lists. Each internal list is a segment.
+	:param geojson:
+	:return:
+	"""
+	link_pt_ids = defaultdict(list)
+	link_pt_coordinates = defaultdict(list)
+	for s in geojson['features']:
+		segment_id = s['properties']['link_id']
+		link_pt_coordinates[segment_id].append(s['geometry']['coordinates'])
+		link_pt_ids[segment_id] =s['properties']['pt_ids']
+
+	return link_pt_coordinates, link_pt_ids
+
 
 def to_samplepoints(geojson):
 	samples = []

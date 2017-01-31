@@ -14,7 +14,7 @@ from location import Location, Trip
 from rtree import Rtree
 from location import TripLoader
 
-all_trips = TripLoader.get_all_trips("trips/")
+all_trips = TripLoader.get_all_trips("../data/trips/")
 
 # global parameters
 cluster_seed_interval = 50.0 # meters
