@@ -9,11 +9,12 @@ import random
 import json
 import operator
 import networkx as nx
-import fiona
+#import fiona
 import random
 import geopy
 import geopy.distance
 import math
+import sys
 
 
 BIN_SEGMENT_LENGTH = 2  # length of bins in meters
@@ -206,11 +207,20 @@ def load_data_rade(fname='data/gps_data/gps_points.csv'):
 	data_points = list()
 	raw_points = list()
 
+	print 'Reading File'
+	cnt = 0
 	with open(fname, 'r') as f:
 		f.readline()
 		for line in f:
+			sys.stdout.write('\r %s: %s' % (cnt, line.strip()))
+			sys.stdout.flush()
+			cnt += 1
+			#if cnt > 1000:
+			#	break
 			tup_temp = line.strip().split(',')
 			tup = [0 for _ in range(10)]
+			# bt_id
+			tup[4] = tup_temp[1]
 			# timestamp
 			tup[6] = tup_temp[3] + '+03'
 			# lon
@@ -220,9 +230,8 @@ def load_data_rade(fname='data/gps_data/gps_points.csv'):
 
 			pt = GpsPoint(tup)
 			data_points.append(pt)
-			raw_points.append(pt.get_coordinates())
-	points_tree = cKDTree(raw_points)
-	return np.array(data_points), np.array(raw_points), points_tree
+	print 'Done'
+	return np.array(data_points)
 
 def to_geojson(samples):
 	"""
@@ -446,7 +455,7 @@ def create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', wa
 	:return: list of lists of trajectories
 	"""
 
-	data_points, raw_points, points_tree = load_data_rade(fname=INPUT_FILE_NAME)
+	data_points = load_data_rade(fname=INPUT_FILE_NAME)
 	detections = defaultdict(list)
 	for p in data_points:
 		detections[p.btid].append(p)

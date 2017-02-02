@@ -372,7 +372,7 @@ if __name__ == '__main__':
     force_step = 1.0
     spring_force_constant = 0.005
     attraction_force_sigma = 5.0
-    trip_max = 36802  # len(all_trips)
+    trip_max = len(all_trips)
 
     (opts, args) = getopt.getopt(sys.argv[1:], "f:s:a:n:h")
     

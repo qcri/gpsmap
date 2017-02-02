@@ -15,12 +15,14 @@ import sys
 
 def prepare_trips(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=600):
 	trips = create_trajectories(INPUT_FILE_NAME=INPUT_FILE_NAME, waiting_threshold=waiting_threshold)
+	print 'There are:', len(trips), ' trips\n'
 	cnt = 0
 	for trip in trips:
 		if len(trip) < 2:
 			continue
 		print 'trip:', cnt, len(trip)
 		with open('data/trips/trip_%s.txt' % cnt, 'w') as g:
+		#with open('data/trips_%s/trip_%s.txt' % (INPUT_FILE_NAME.split('/')[-1], cnt), 'w') as g:
 			for i, loc in enumerate(trip):
 				if i == 0:
 					prev_loc = 'None'
@@ -98,10 +100,13 @@ def save_trips_points_to_geojson(trips_path='data/trips', prefix='', max_trips=2
 	json.dump(geojson, open('%s/%s_%s' % (path, prefix, 'trip_points.geojson'), 'w'))
 
 if __name__ == '__main__':
+	import sys
 
-	# prepare_trips(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', waiting_threshold=11)
+	fname = sys.argv[1]
 
-	save_edges_to_geojson(cao_graph_edges_file='cao_edges.txt')
+	prepare_trips(INPUT_FILE_NAME='data/%s' % fname, waiting_threshold=21)
+
+	# save_edges_to_geojson(cao_graph_edges_file='cao_edges.txt')
 	# check_bidirectionality(edge_fname='map_inference_algorithms/cao_edges.txt')
 	# sys.exit()
 
