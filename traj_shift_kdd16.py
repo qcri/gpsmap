@@ -297,7 +297,7 @@ def inferring_links_between_segments(filecode=None, samples=None, segments=None,
 	:return:
 	"""
 	# read/generate trajectories. each trajectory is: [pt1, pt2, ... ptn]
-	trajectories = create_trajectories(INPUT_FILE_NAME='data/%s.csv' % filecode, waiting_threshold=21)
+	trajectories = create_trajectories(INPUT_FILE_NAME='data/gps_data/%s.csv' % filecode, waiting_threshold=21)
 	# read the mappings points to samples:
 	if points_to_samples is None:
 		points_to_samples = {int(k):v for k,v in json.load(open('data/%s_mappings_point_to_sample.json' % filecode)).iteritems()}
@@ -369,10 +369,10 @@ if __name__ == "__main__":
 	max_link_length = 200
 	# -----------------
 	# 1. find samples
-	traj_meanshift_sampling(filecode=FILE_CODE, RADIUS_METER=RADIUS_METER, HEADING_ANGLE_TOLERANCE=HEADING_ANGLE_TOLERANCE)
+	# traj_meanshift_sampling(filecode=FILE_CODE, RADIUS_METER=RADIUS_METER, HEADING_ANGLE_TOLERANCE=HEADING_ANGLE_TOLERANCE)
 
 	# 2. find segments
-	road_segment_clustering(filecode=FILE_CODE, minL=100, dist_threshold=dist_threshold, angle_threshold=angle_threshold)
+	# road_segment_clustering(filecode=FILE_CODE, minL=100, dist_threshold=dist_threshold, angle_threshold=angle_threshold)
 
 	# 3. Inferring links between segments
 	inferring_links_between_segments(filecode=FILE_CODE, samples=None, segments=None, points_to_samples=None,

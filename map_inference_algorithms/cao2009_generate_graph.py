@@ -466,7 +466,7 @@ if __name__ == '__main__':
     
     # default values
     trip_round = 1
-    trip_max = 36802
+    trip_max = 2770
     
     (opts, args) = getopt.getopt(sys.argv[1:], "p:v:d:b:r:n:h")
     
