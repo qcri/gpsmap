@@ -227,6 +227,8 @@ def load_data_rade(fname='data/gps_data/gps_points.csv'):
 			tup[7] = tup_temp[5]
 			# lat:
 			tup[8] = tup_temp[6]
+			# locid:
+			tup[3] = tup_temp[0]
 
 			pt = GpsPoint(tup)
 			data_points.append(pt)
@@ -455,7 +457,8 @@ def create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', wa
 	:return: list of lists of trajectories
 	"""
 
-	data_points = load_data_rade(fname=INPUT_FILE_NAME)
+	data_points, raw_points, points_tree = load_data(fname=INPUT_FILE_NAME)
+	# data_points = load_data_rade(fname=INPUT_FILE_NAME)
 	detections = defaultdict(list)
 	for p in data_points:
 		detections[p.btid].append(p)
@@ -466,15 +469,28 @@ def create_trajectories(INPUT_FILE_NAME='data/gps_data/gps_points_07-11.csv', wa
 	for btd, ldetections in detections.iteritems():
 		points = sorted(ldetections, key=operator.attrgetter('timestamp'))
 		source = 0
-		destination = 0
-		for i in range(1, len(points)):
-			delta = points[i].timestamp - points[source].timestamp
+		prev_point = 0
+		i = 1
+		while i < len(points):
+			delta = points[i].timestamp - points[prev_point].timestamp
 			if delta.days * 24 * 3600 + delta.seconds > waiting_threshold:
 				trajectories.append(points[source: i])
-				source = i + 1
-				i += 1
+				source = i
+			prev_point = i
+			i += 1
 		if source < len(points):
 			trajectories.append(points[source: -1])
+
+		# source = 0
+		# destination = 0
+		# for i in range(1, len(points)):
+		# 	delta = points[i].timestamp - points[source].timestamp
+		# 	if delta.days * 24 * 3600 + delta.seconds > waiting_threshold:
+		# 		trajectories.append(points[source: i])
+		# 		source = i + 1
+		# 		i += 1
+		# if source < len(points):
+		# 	trajectories.append(points[source: -1])
 	return trajectories
 
 def assign_points_to_cells_v1(mgrid, points):

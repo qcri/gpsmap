@@ -100,11 +100,8 @@ def save_trips_points_to_geojson(trips_path='data/trips', prefix='', max_trips=2
 	json.dump(geojson, open('%s/%s_%s' % (path, prefix, 'trip_points.geojson'), 'w'))
 
 if __name__ == '__main__':
-	import sys
-
-	fname = sys.argv[1]
-
-	prepare_trips(INPUT_FILE_NAME='data/%s' % fname, waiting_threshold=21)
+	fname = 'data/gps_data/gps_points_07-11.csv'
+	prepare_trips(INPUT_FILE_NAME=fname, waiting_threshold=21)
 
 	# save_edges_to_geojson(cao_graph_edges_file='cao_edges.txt')
 	# check_bidirectionality(edge_fname='map_inference_algorithms/cao_edges.txt')

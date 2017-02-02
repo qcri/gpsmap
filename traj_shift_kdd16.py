@@ -297,7 +297,7 @@ def inferring_links_between_segments(filecode=None, samples=None, segments=None,
 	:return:
 	"""
 	# read/generate trajectories. each trajectory is: [pt1, pt2, ... ptn]
-	trajectories = create_trajectories(INPUT_FILE_NAME='data/%s.csv' % filecode, waiting_threshold=5)
+	trajectories = create_trajectories(INPUT_FILE_NAME='data/%s.csv' % filecode, waiting_threshold=21)
 	# read the mappings points to samples:
 	if points_to_samples is None:
 		points_to_samples = {int(k):v for k,v in json.load(open('data/%s_mappings_point_to_sample.json' % filecode)).iteritems()}
